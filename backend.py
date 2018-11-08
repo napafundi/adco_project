@@ -8,11 +8,12 @@ class Balance_Database:
         self.cur.execute("CREATE TABLE IF NOT EXISTS balance (date TEXT, amount REAL)")
         self.conn.commit()
 
-
+        #update balance database
     def change_balance(self,date,amount):
         self.cur.execute("INSERT INTO balance VALUES (?,?)", (date,amount))
         self.conn.commit()
 
+        #view balance database
     def view(self):
         global rows
         self.cur.execute("SELECT * FROM balance")
@@ -29,10 +30,12 @@ class Transaction_Database:
         self.cur.execute("CREATE TABLE IF NOT EXISTS transactions (date TEXT, amount REAL, location TEXT, type TEXT)")
         self.conn.commit()
 
+        #change transaction database
     def change_balance(self,date,amount,location,type):
         self.cur.execute("INSERT INTO transactions VALUES (?,?,?,?)", (date,amount,location,type))
         self.conn.commit()
 
+        #view transaction database
     def view(self):
         global rows
         self.cur.execute("SELECT * FROM transactions")
