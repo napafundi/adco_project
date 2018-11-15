@@ -19,27 +19,34 @@ window.resizable(0,0)
 inventory = modules.database()
 modules.display_database()
 
-#create openeing window tabs
-notebook = ttk.Notebook(window)
+#create opening window tabs
+notebook = ttk.Notebook(window, height = 600, width = 800)
 f1 = ttk.Frame(notebook)
 f2 = ttk.Frame(notebook)
-notebook.add(f1, text = "Raw Materials")
-notebook.add(f2, text = "In Production")
-notebook.grid()
+f3 = ttk.Frame(notebook)
+notebook.add(f1, text = "Raw Materials",padding=10)
+notebook.add(f2, text = "In Production",padding=10)
+notebook.add(f3, text = "Bottle Inventory",padding=10)
+notebook.pack(side = RIGHT, padx=10)
 
-#BALANCE TAB
-b1 = Button(f1, text ="View Bottles").grid(padx="10",pady="5",row=0,column=0)
-b2 = Button(f1, text="View Boxes").grid(padx="10",pady="5",row=1,column=0)
+#create raw materials table
+raw_materials = ttk.Treeview(f1, column = ("ID","Item","Amount"), show = "headings",height=600)
+raw_materials.column("ID", anchor="center")
+raw_materials.column("Item", anchor="center")
+raw_materials.column("Amount", anchor="center")
+raw_materials.heading("#1", text = "ID")
+raw_materials.heading("#2", text="Date")
+raw_materials.heading("#3", text="Amount")
+raw_materials.pack(fill = BOTH)
 
-    #create balance table
-tree = ttk.Treeview(f1, column = ("ID","Item","Amount"), show = "headings")
-tree.column("ID", anchor="center")
-tree.column("Item", anchor="center")
-tree.column("Amount", anchor="center")
-tree.heading("#1", text = "ID")
-tree.heading("#2", text="Date")
-tree.heading("#3", text="Amount")
-tree.grid(row=0, column=2, rowspan=4)
+#buttons widget
+f4 = Frame(window, height = 600)
+b1 = Button(f4, text = "View Bottles")
+b1.pack(anchor='center', padx=30,pady=10)
+b2 = Button(f4, text = "View Boxes")
+b2.pack(anchor='center', padx=30, pady=10)
+f4.pack(side=LEFT)
+
 
 
 
