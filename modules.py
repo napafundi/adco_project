@@ -5,5 +5,5 @@ def database():
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("CREATE TABLE IF NOT EXISTS bottles (id INTEGER PRIMARY KEY,item TEXT, amount INTEGER)")
-    cur.execute("INSERT INTO bottles VALUES (NULL,?,?)", ('Oliver gay',120))
+    #cur.execute("INSERT INTO bottles VALUES (NULL,?,?)", ('',120))
     conn.commit()
