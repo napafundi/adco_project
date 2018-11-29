@@ -260,11 +260,49 @@ po_opt_frame = LabelFrame(po_command_frame,height=300,bd=5,relief=RIDGE,text="Op
 
 bpo1 = Button(po_opt_frame,text="Create Purchase Order",width=20,height=2)
 bpo1.pack(anchor='center')
-bpo2 = Button(po_opt_frame,text="Edit Selection",width=20,height=2)
+bpo2 = Button(po_opt_frame,text="View Purchase Order",width=20,height=2)
 bpo2.pack(anchor='center')
+bpo3 = Button(po_opt_frame,text="Edit Selection",width=20,height=2)
+bpo3.pack(anchor='center')
 
 po_command_frame.pack()
 po_opt_frame.pack()
+
+#EMPLOYEE TRANSACTIONS
+employee_transactions = ttk.Notebook(window,height=650,width=1024)
+emp_trans_frame = Frame(employee_transactions)
+employee_transactions.add(emp_trans_frame,text="Employee Transactions",padding=10)
+
+#EMPLOYEE TRANSACTIONS table
+emp_trans_table = ttk.Treeview(emp_trans_frame, column=("Date","Product","Amount","Employee"),show="headings",height=600)
+emp_trans_table.column("Date",anchor="center",width=187)
+emp_trans_table.column("Product",anchor="center",width=187)
+emp_trans_table.column("Amount",anchor="center",width=187)
+emp_trans_table.column("Employee",anchor="center",width=187)
+emp_trans_table.heading("#1", text="Date")
+emp_trans_table.heading("#2", text="Product")
+emp_trans_table.heading("#3", text="Amount")
+emp_trans_table.heading("#4", text="Employee")
+emp_trans_table.pack(side=RIGHT, fill=Y)
+
+#OPTIONS (EMPLOYEE TRANSACTIONS)
+emp_trans_command_frame = Frame(emp_trans_frame,height=600,width=50)
+emp_trans_opt_frame = LabelFrame(emp_trans_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
+
+bet1 = Button(emp_trans_opt_frame,text="Checkout Bottles",width=20,height=2)
+bet1.pack(anchor='center')
+bet2 = Button(emp_trans_opt_frame,text="Edit Selection",width=20,height=2)
+bet2.pack(anchor='center')
+
+emp_trans_command_frame.pack()
+emp_trans_opt_frame.pack()
+
+#PRODUCTION SHEETS
+def sheets_view():
+    sheets_window = Toplevel(window,height=500,width=500)
+    sheets_window.title("Production Sheets")
+    sheets_window.focus()
+
 
 #MENU BAR
 menubar = Menu(window)
@@ -277,11 +315,11 @@ menubar.add_cascade(label="Inventory", menu=menu1)
 
 menu2 = Menu(menubar, tearoff=0)
 menu2.add_command(label="Purchase Orders", command=lambda: modules.view_widget(window,purchase_orders,10,BOTTOM))
-menu2.add_command(label="Employee Transactions")
+menu2.add_command(label="Employee Transactions", command=lambda: modules.view_widget(window,employee_transactions,10,BOTTOM))
 menubar.add_cascade(label="Shipping and Transactions",menu=menu2)
 
 menu3 = Menu(menubar, tearoff=0)
-menu3.add_command(label="Production Sheets")
+menu3.add_command(label="Production Sheets", command=sheets_view)
 menu3.add_command(label="Case Labels")
 menubar.add_cascade(label="Files", menu=menu3)
 
