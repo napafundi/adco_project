@@ -2,6 +2,8 @@ from tkinter import *
 import sqlite3
 import modules
 from tkinter import ttk
+import os
+import webbrowser
 
 #home window information
 window = Tk()
@@ -298,11 +300,22 @@ emp_trans_command_frame.pack()
 emp_trans_opt_frame.pack()
 
 #PRODUCTION SHEETS
+sheets_list = ["hello.txt"]
+
+def view_sheet(file):
+    location = os.getcwd()
+    file = webbrowser.open_new(location + '\\' + file)
+
 def sheets_view():
-    sheets_window = Toplevel(window,height=500,width=500)
+    sheets_window = Toplevel(window)
+    link = modules.Link_Button(sheets_window,text="Hello.txt",action=view_sheet)
+    link.pack()
     sheets_window.title("Production Sheets")
     sheets_window.focus()
-
+    x = (screen_width/2) - (500/2)
+    y = (screen_height/2) - (500/2)
+    sheets_window.geometry("%dx%d+%d+%d" % (500,500,x,y))
+    sheets_window.resizable(0,0)
 
 #MENU BAR
 menubar = Menu(window)
