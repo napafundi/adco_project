@@ -5,7 +5,7 @@ from tkinter import ttk
 import os
 import webbrowser
 
-#home window information
+#create root window, resize based on user's screen info
 window = Tk()
 window.title("Albany Distilling Company Inventory")
 width = 1024
@@ -17,72 +17,56 @@ y = (screen_height/2) - (height/2)
 window.geometry("%dx%d+%d+%d" % (width,height,x,y))
 window.resizable(0,0)
 
+#set theme for gui
+s = ttk.Style()
+s.theme_use('xpnative')
+
 #create/load and display database
 inventory = modules.database()
 
-#BOTTLE INV
-bottle_inv = ttk.Notebook(window, height = 650, width = 1024)
-raw_frame = ttk.Frame(bottle_inv)
-bottle_frame = ttk.Frame(bottle_inv)
-production_frame = ttk.Frame(bottle_inv)
-raw_materials_used = ttk.Frame(bottle_inv)
-bottle_inv.add(raw_frame, text = "Raw Materials",padding=10)
-bottle_inv.add(production_frame, text="Production Log",padding=10)
-bottle_inv.add(raw_materials_used, text="Materials Used", padding=10)
-bottle_inv.add(bottle_frame, text = "Bottle Inventory",padding=10)
-bottle_inv.pack(padx=10, side = BOTTOM)
+#create bottle inventory notebook, populate with tabbed frames
+bottle_inventory_notebook = ttk.Notebook(window, height = 650, width = 1024)
+raw_materials_frame = ttk.Frame(bottle_inventory_notebook)
+bottle_frame = ttk.Frame(bottle_inventory_notebook)
+production_frame = ttk.Frame(bottle_inventory_notebook)
+materials_used_frame = ttk.Frame(bottle_inventory_notebook)
+bottle_inventory_notebook.add(raw_materials_frame, text = "Raw Materials",padding=10)
+bottle_inventory_notebook.add(production_frame, text="Production Log",padding=10)
+bottle_inventory_notebook.add(materials_used_frame, text="Materials Used", padding=10)
+bottle_inventory_notebook.add(bottle_frame, text = "Bottle Inventory",padding=10)
+bottle_inventory_notebook.pack(padx=10, side = BOTTOM)
 
-#RAW MATERIALS table
-raw_table = ttk.Treeview(raw_frame, column = ("ID","Item","Amount"), show = "headings",height=600)
-raw_table.column("ID", anchor="center", width=250)
-raw_table.column("Item", anchor="center", width=250)
-raw_table.column("Amount", anchor="center", width=250)
-raw_table.heading("#1", text = "ID")
-raw_table.heading("#2", text="Item")
-raw_table.heading("#3", text="Amount")
-raw_table.pack(side=RIGHT,fill = Y)
+#create raw materials table and populate with data from raw materials database
+raw_materials_table = ttk.Treeview(raw_materials_frame, column = ("ID","Item","Amount"), show = "headings",height=600)
+raw_materials_table.column("ID", anchor="center", width=250)
+raw_materials_table.column("Item", anchor="center", width=250)
+raw_materials_table.column("Amount", anchor="center", width=250)
+raw_materials_table.heading("#1", text = "ID")
+raw_materials_table.heading("#2", text="Item")
+raw_materials_table.heading("#3", text="Amount")
+raw_materials_table.pack(side=RIGHT,fill = Y)
 
 modules.cur.execute("SELECT * FROM bottles")
 rows = modules.cur.fetchall()
 for row in rows:
-    raw_frame.insert("",END,values = row)
+    raw_materials_table.insert("",END,values = row)
 
-#VIEW (RAW MATERIALS)
-raw_command_frame = Frame(raw_frame, height = 600,width=50)
-raw_view_frame = LabelFrame(raw_command_frame,height = 300, bd = 5, relief= RIDGE, text="View", font="bold")
+#create raw materials command frame and populate with view and options buttons
+raw_materials_command_frame = Frame(raw_materials_frame, height = 600,width=50)
 
-br1 = Button(raw_view_frame, text = "Bottles", width = 20, height=2)
-br1.pack(anchor='center')
-br2 = Button(raw_view_frame, text = "Boxes", width = 20, height=2)
-br2.pack(anchor='center')
-br3 = Button(raw_view_frame, text = "Caps", width = 20, height=2)
-br3.pack(anchor='center')
-br4 = Button(raw_view_frame, text = "Capsules", width = 20, height=2)
-br4.pack(anchor='center')
-br5 = Button(raw_view_frame, text = "Labels", width = 20, height=2)
-br5.pack(anchor='center')
-br6 = Button(raw_view_frame, text = "All", width = 20, height =2)
-br6.pack(anchor='center')
+raw_materials_view_frame = LabelFrame(raw_materials_command_frame,height = 300, bd = 5, relief= RIDGE, text="View", font="bold")
+raw_materials_view_buttons = ["Bottles","Boxes","Caps","Capsules","Labels","All"]
+modules.button_maker(raw_materials_view_buttons,raw_materials_view_frame)
 
-#OPTIONS (RAW MATERIALS)
-raw_opt_frame = LabelFrame(raw_command_frame,height = 300, text = "Options", bd = 5, relief = RIDGE, font = "bold")
+raw_materials_option_frame = LabelFrame(raw_materials_command_frame,height = 300, text = "Options", bd = 5, relief = RIDGE, font = "bold")
+raw_materials_option_buttons = ["Production","Raw Materials Received","Add Item","Remove Item","Edit Selection"]
+modules.button_maker(raw_materials_option_buttons,raw_materials_option_frame)
 
-br7 = Button(raw_opt_frame, text="Production" , width = 20, height=2)
-br7.pack(anchor='center')
-br8 = Button(raw_opt_frame, text = "Raw Materials Received", width=20, height=2)
-br8.pack(anchor='center')
-br9 = Button(raw_opt_frame, text = "Add Item", width=20, height=2)
-br9.pack(anchor='center')
-br10 = Button(raw_opt_frame, text = "Remove Item", width=20, height=2)
-br10.pack()
-br11 = Button(raw_opt_frame, text="Edit Selection", width=20, height=2)
-br11.pack()
+raw_materials_command_frame.pack()
+raw_materials_view_frame.pack()
+raw_materials_option_frame.pack()
 
-raw_command_frame.pack()
-raw_view_frame.pack()
-raw_opt_frame.pack()
-
-#PRODUCTION table
+#create production table
 production_table = ttk.Treeview(production_frame, column=("Date","Product","Amount"),show="headings",height=600)
 production_table.column("Date",anchor="center",width=250)
 production_table.column("Product",anchor="center",width=250)
@@ -92,29 +76,33 @@ production_table.heading("#2", text="Product")
 production_table.heading("#3", text="Amount")
 production_table.pack(side=RIGHT, fill=Y)
 
-#OPTIONS (PRODUCTION LOG)
-production_command_frame = Frame(production_frame,height=600,width=50)
-production_opt_frame = LabelFrame(production_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
+#TODO: populate production table with production database info
 
+#create production commands frame and populate with an edit button
+production_command_frame = Frame(production_frame,height=600,width=50)
+
+production_opt_frame = LabelFrame(production_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
 bp1 = Button(production_opt_frame,text="Edit Selection",width=20,height=2)
 bp1.pack(anchor='center')
 
 production_command_frame.pack()
 production_opt_frame.pack()
 
-#MATERIALS USED table
-bottle_table = ttk.Treeview(raw_materials_used,column=("ID", "Product", "Amount","Date"), show="headings", height=600)
-bottle_table.column("ID", anchor="center", width=200)
-bottle_table.column("Product", anchor="center", width=200)
-bottle_table.column("Amount", anchor="center", width=200)
-bottle_table.column("Date", anchor="center", width=200)
-bottle_table.heading("#1", text = "ID")
-bottle_table.heading("#2", text="Product")
-bottle_table.heading("#3", text="Amount")
-bottle_table.heading("#4", text="Date")
-bottle_table.pack(fill='both')
+#create materials used table
+materials_used_table = ttk.Treeview(materials_used_frame,column=("ID", "Product", "Amount","Date"), show="headings", height=600)
+materials_used_table.column("ID", anchor="center", width=200)
+materials_used_table.column("Product", anchor="center", width=200)
+materials_used_table.column("Amount", anchor="center", width=200)
+materials_used_table.column("Date", anchor="center", width=200)
+materials_used_table.heading("#1", text = "ID")
+materials_used_table.heading("#2", text="Product")
+materials_used_table.heading("#3", text="Amount")
+materials_used_table.heading("#4", text="Date")
+materials_used_table.pack(fill='both')
 
-#BOTTLE table
+#TODO: populate materials used table
+
+#create bottle table
 bottle_table = ttk.Treeview(bottle_frame,column=("ID", "Product", "Amount"), show="headings", height=600)
 bottle_table.column("ID", anchor="center", width=250)
 bottle_table.column("Product", anchor="center", width=250)
@@ -124,72 +112,58 @@ bottle_table.heading("#2", text="Product")
 bottle_table.heading("#3", text="Amount")
 bottle_table.pack(side=RIGHT,fill = Y)
 
-#VIEW (BOTTLES)
-bot_command_frame = Frame(bottle_frame,height=600,width=50)
-bot_view_frame = LabelFrame(bot_command_frame,height=300, bd=5, relief=RIDGE, text="View", font="bold")
+#create bottle command frame and populate with view and option buttons
+bottle_command_frame = Frame(bottle_frame,height=600,width=50)
 
-bb1 = Button(bot_view_frame, text="Vodka", width=20, height=2)
-bb1.pack()
-bb2 = Button(bot_view_frame, text="Whiskey", width=20, height=2)
-bb2.pack()
-bb3 = Button(bot_view_frame, text="Rum", width=20, height=2)
-bb3.pack()
-bb4 = Button(bot_view_frame, text="Other", width=20, height=2)
-bb4.pack()
-bb5 = Button(bot_view_frame, text="All", width=20, height=2)
-bb5.pack()
+bottle_view_frame = LabelFrame(bottle_command_frame,height=300, bd=5, relief=RIDGE, text="View", font="bold")
+bottle_view_buttons = ["Vodka","Whiskey","Rum","Other","All"]
+modules.button_maker(bottle_view_buttons,bottle_view_frame)
 
-#OPTIONS (BOTTLES)
-bot_opt_frame = LabelFrame(bot_command_frame, height=300, bd=5, relief=RIDGE, text="Options", font="bold")
+bottle_option_frame = LabelFrame(bottle_command_frame, height=300, bd=5, relief=RIDGE, text="Options", font="bold")
+bottle_option_buttons = ["Add Item","Remove Item","Edit Selection"]
+modules.button_maker(bottle_option_buttons,bottle_option_frame)
 
-bb6 = Button(bot_opt_frame, text="Add Item", width=20, height=2)
-bb6.pack(anchor='center')
-bb7 = Button(bot_opt_frame, text="Remove Item", width=20, height=2)
-bb7.pack()
-bb8 = Button(bot_opt_frame, text="Edit Selection", width=20, height=2)
-bb8.pack(anchor='center')
+bottle_view_frame.pack()
+bottle_option_frame.pack()
+bottle_command_frame.pack()
 
-bot_view_frame.pack()
-bot_opt_frame.pack()
-bot_command_frame.pack()
+#create grain inventory notebook, populate with tabbed frames
+grain_inventory_notebook = ttk.Notebook(window, height=650, width=1024)
+grain_inventory_frame = ttk.Frame(grain_inventory_notebook)
+grain_inventory_notebook.add(grain_inventory_frame, text="Grain Inventory", padding=10)
 
-#GRAIN INV
-grain_inv = ttk.Notebook(window, height=650, width=1024)
-grain_frame = ttk.Frame(grain_inv)
-grain_inv.add(grain_frame, text="Grain Inventory", padding=10)
-
-#GRAIN table
-grain_table = ttk.Treeview(grain_frame, column=("ID","Type","Amount","Order No."),show="headings",height=600)
-grain_table.column("ID",anchor="center",width=187)
-grain_table.column("Type",anchor="center",width=187)
-grain_table.column("Amount",anchor="center",width=187)
-grain_table.column("Order No.",anchor="center",width=187)
+#create grain inventory table and pack within grain frame
+grain_table = ttk.Treeview(grain_inventory_frame, column=("ID","Order No.","Type","Amount","Price","Total"),show="headings",height=600)
+grain_table.column("ID",anchor="center",width=125)
+grain_table.column("Order No.",anchor="center",width=125)
+grain_table.column("Type",anchor="center",width=125)
+grain_table.column("Amount",anchor="center",width=125)
+grain_table.column("Price",anchor="center",width=125)
+grain_table.column("Total",anchor='center',width=125)
 grain_table.heading("#1", text="ID")
-grain_table.heading("#2", text="Type")
-grain_table.heading("#3", text="Amount")
-grain_table.heading("#4", text="Order No.")
+grain_table.heading("#2", text="Order No.")
+grain_table.heading("#3", text="Type")
+grain_table.heading("#4", text="Amount")
+grain_table.heading("#5", text="Price")
+grain_table.heading("#6", text="Total")
 grain_table.pack(side=RIGHT, fill=Y)
 
-#OPTIONS (GRAIN)
-grain_command_frame = Frame(grain_frame,height=600,width=50)
-grain_opt_frame = LabelFrame(grain_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
+#create grain command frame and populate with option buttons
+grain_command_frame = Frame(grain_inventory_frame,height=600,width=50)
 
-bg1 = Button(grain_opt_frame,text="Produce Mash",width=20,height=2)
-bg1.pack(anchor='center')
-bg2 = Button(grain_opt_frame,text="Edit Selection",width=20,height=2)
-bg2.pack(anchor='center')
-bg3 = Button(grain_opt_frame,text="Mash Production Sheet",width=20,height=2)
-bg3.pack()
+grain_option_frame = LabelFrame(grain_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
+grain_option_buttons = ["Produce Mash","Edit Selection","Mash Production Sheet"]
+modules.button_maker(grain_option_buttons,grain_option_frame)
 
 grain_command_frame.pack()
-grain_opt_frame.pack()
+grain_option_frame.pack()
 
-#BARREL INV
-barrel_inv = ttk.Notebook(window, height=650, width=1024)
-barrel_frame = ttk.Frame(barrel_inv)
-barrel_inv.add(barrel_frame, text="Barrel Inventory",padding=10)
+#create barrel inventory notebook and populates with tabbed frames
+barrel_inventory_notebook = ttk.Notebook(window, height=650, width=1024)
+barrel_frame = ttk.Frame(barrel_inventory_notebook)
+barrel_inventory_notebook.add(barrel_frame, text="Barrel Inventory",padding=10)
 
-#BARREL table
+#create barrel inventory table
 barrel_table = ttk.Treeview(barrel_frame, column=("Barrel No.","Spirit","Proof Gallons","Date Filled","Age","Investor"),show="headings",height=600)
 barrel_table.column("Barrel No.",anchor="center",width=125)
 barrel_table.column("Spirit",anchor="center",width=125)
@@ -205,144 +179,139 @@ barrel_table.heading("#5", text="Age")
 barrel_table.heading("#6", text="Investor")
 barrel_table.pack(side=RIGHT, fill=Y)
 
-#VIEW (BARRELS)
+#create barrel command frame and populate with view and option buttons
 barrel_command_frame = Frame(barrel_frame,height=600,width=50)
+
 barrel_view_frame = LabelFrame(barrel_command_frame,height=300,bd=5,relief=RIDGE,text="View",font="bold")
+barrel_view_buttons = ["Bourbon","Rye","Malt","Other","All"]
+modules.button_maker(barrel_view_buttons,barrel_view_frame)
 
-bba1 = Button(barrel_view_frame,text="Bourbon",width=20,height=2)
-bba1.pack(anchor='center')
-bba2 = Button(barrel_view_frame,text="Rye",width=20,height=2)
-bba2.pack(anchor='center')
-bba3 = Button(barrel_view_frame,text="Malt",width=20,height=2)
-bba3.pack(anchor='center')
-bba4 = Button(barrel_view_frame,text="Other",width=20,height=2)
-bba4.pack(anchor='center')
-bba5 = Button(barrel_view_frame,text="All",width=20,height=2)
-bba5.pack(anchor='center')
-
-#OPTIONS (BARRELS)
-
-barrel_opt_frame = LabelFrame(barrel_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
-
-bba6 = Button(barrel_opt_frame, text="Fill Barrel",width=20,height=2)
-bba6.pack(anchor='center')
-bba7 = Button(barrel_opt_frame,text="Empty Barrel",width=20,height=2)
-bba7.pack(anchor='center')
-bba8 = Button(barrel_opt_frame,text="Edit Selecton",width=20,height=2)
-bba8.pack(anchor='center')
+barrel_option_frame = LabelFrame(barrel_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
+barrel_option_buttons = ["Fill Barrel","Empty Barrel","Edit Selection"]
+modules.button_maker(barrel_option_buttons,barrel_option_frame)
 
 barrel_command_frame.pack()
 barrel_view_frame.pack()
-barrel_opt_frame.pack()
+barrel_option_frame.pack()
 
+#create purchase orders notebook with tabbed frames
+purchase_orders_notebook = ttk.Notebook(window,height=650,width=1024)
+purchase_orders_frame = Frame(purchase_orders_notebook)
+purchase_orders_notebook.add(purchase_orders_frame,text="Purchase Orders",padding=10)
 
+#create purchase orders table
+purchase_orders_table = ttk.Treeview(purchase_orders_frame, column=("Date","Product","Amount","Price","Total","Destination","PO No."),show="headings",height=600)
+purchase_orders_table.column("Date",anchor="center",width=108)
+purchase_orders_table.column("Product",anchor="center",width=108)
+purchase_orders_table.column("Amount",anchor="center",width=108)
+purchase_orders_table.column("Price",anchor="center",width=108)
+purchase_orders_table.column("Total",anchor="center",width=108)
+purchase_orders_table.column("Destination",anchor="center",width=108)
+purchase_orders_table.column("PO No.",anchor="center",width=108)
+purchase_orders_table.heading("#1", text="Date")
+purchase_orders_table.heading("#2", text="Product")
+purchase_orders_table.heading("#3", text="Amount")
+purchase_orders_table.heading("#4", text="Price")
+purchase_orders_table.heading("#5", text="Total")
+purchase_orders_table.heading("#6", text="Destination")
+purchase_orders_table.heading("#7", text="PO No.")
+purchase_orders_table.pack(side=RIGHT, fill=Y)
 
-#PURCHASE ORDERS
-purchase_orders = ttk.Notebook(window,height=650,width=1024)
-po_frame = Frame(purchase_orders)
-purchase_orders.add(po_frame,text="Purchase Orders",padding=10)
+#create purchase orders command frame and populate with option buttons
+purchase_orders_command_frame = Frame(purchase_orders_frame,height=600,width=50)
 
-#PURCHASE ORDERS table
-po_table = ttk.Treeview(po_frame, column=("Date","Product","Amount","Destination","PO No."),show="headings",height=600)
-po_table.column("Date",anchor="center",width=150)
-po_table.column("Product",anchor="center",width=150)
-po_table.column("Amount",anchor="center",width=150)
-po_table.column("Destination",anchor="center",width=150)
-po_table.column("PO No.",anchor="center",width=150)
-po_table.heading("#1", text="Date")
-po_table.heading("#2", text="Product")
-po_table.heading("#3", text="Amount")
-po_table.heading("#4", text="Destination")
-po_table.heading("#5", text="PO No.")
-po_table.pack(side=RIGHT, fill=Y)
+purchase_orders_option_frame = LabelFrame(purchase_orders_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font='bold')
+purchase_orders_option_buttons = ["Create Purchase Order","View Purchase Order","Edit Selection"]
+modules.button_maker(purchase_orders_option_buttons,purchase_orders_option_frame)
 
-#OPTIONS (PURCHASE ORDERS)
-po_command_frame = Frame(po_frame,height=600,width=50)
-po_opt_frame = LabelFrame(po_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font='bold')
+purchase_orders_command_frame.pack()
+purchase_orders_option_frame.pack()
 
-bpo1 = Button(po_opt_frame,text="Create Purchase Order",width=20,height=2)
-bpo1.pack(anchor='center')
-bpo2 = Button(po_opt_frame,text="View Purchase Order",width=20,height=2)
-bpo2.pack(anchor='center')
-bpo3 = Button(po_opt_frame,text="Edit Selection",width=20,height=2)
-bpo3.pack(anchor='center')
+#create employee transactions notebook and populate with tabbed frames
+employee_transactions_notebook = ttk.Notebook(window,height=650,width=1024)
+employee_transactions_frame = Frame(employee_transactions_notebook)
+employee_transactions_notebook.add(employee_transactions_frame,text="Employee Transactions",padding=10)
 
-po_command_frame.pack()
-po_opt_frame.pack()
+#create employee transactions table
+employee_transactions_table = ttk.Treeview(employee_transactions_frame, column=("Date","Product","Amount","Employee"),show="headings",height=600)
+employee_transactions_table.column("Date",anchor="center",width=187)
+employee_transactions_table.column("Product",anchor="center",width=187)
+employee_transactions_table.column("Amount",anchor="center",width=187)
+employee_transactions_table.column("Employee",anchor="center",width=187)
+employee_transactions_table.heading("#1", text="Date")
+employee_transactions_table.heading("#2", text="Product")
+employee_transactions_table.heading("#3", text="Amount")
+employee_transactions_table.heading("#4", text="Employee")
+employee_transactions_table.pack(side=RIGHT, fill=Y)
 
-#EMPLOYEE TRANSACTIONS
-employee_transactions = ttk.Notebook(window,height=650,width=1024)
-emp_trans_frame = Frame(employee_transactions)
-employee_transactions.add(emp_trans_frame,text="Employee Transactions",padding=10)
+#create employee transactions command frame and populate with option buttons
+employee_transactions_command_frame = Frame(employee_transactions_frame,height=600,width=50)
 
-#EMPLOYEE TRANSACTIONS table
-emp_trans_table = ttk.Treeview(emp_trans_frame, column=("Date","Product","Amount","Employee"),show="headings",height=600)
-emp_trans_table.column("Date",anchor="center",width=187)
-emp_trans_table.column("Product",anchor="center",width=187)
-emp_trans_table.column("Amount",anchor="center",width=187)
-emp_trans_table.column("Employee",anchor="center",width=187)
-emp_trans_table.heading("#1", text="Date")
-emp_trans_table.heading("#2", text="Product")
-emp_trans_table.heading("#3", text="Amount")
-emp_trans_table.heading("#4", text="Employee")
-emp_trans_table.pack(side=RIGHT, fill=Y)
+employee_transactions_options_frame = LabelFrame(employee_transactions_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
+employee_transactions_options_buttons = ["Checkout Bottles","Edit Selection"]
+modules.button_maker(employee_transactions_options_buttons,employee_transactions_options_frame)
 
-#OPTIONS (EMPLOYEE TRANSACTIONS)
-emp_trans_command_frame = Frame(emp_trans_frame,height=600,width=50)
-emp_trans_opt_frame = LabelFrame(emp_trans_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
+employee_transactions_command_frame.pack()
+employee_transactions_options_frame.pack()
 
-bet1 = Button(emp_trans_opt_frame,text="Checkout Bottles",width=20,height=2)
-bet1.pack(anchor='center')
-bet2 = Button(emp_trans_opt_frame,text="Edit Selection",width=20,height=2)
-bet2.pack(anchor='center')
-
-emp_trans_command_frame.pack()
-emp_trans_opt_frame.pack()
-
-#PRODUCTION SHEETS
-sheets_list = ["hello.txt"]
-
-def view_sheet(file):
-    location = os.getcwd()
-    file = webbrowser.open_new(location + '\\' + file)
-
+#create production sheets toplevel window upon clicking the menu option,
+#populate with files within production_sheets folder
 def sheets_view():
     sheets_window = Toplevel(window)
-    link = modules.Link_Button(sheets_window,text="Hello.txt",action=view_sheet)
-    link.pack()
+    files = os.listdir(os.getcwd() + "\\production_sheets")
+    window_height = 0
+    for file in files:
+        mo = modules.fileRegex.search(file)
+        file_name = mo.group(1)
+        file_label = modules.Sheet_Label(master=sheets_window,text=file_name,file_location= os.getcwd() + "\\production_sheets\\" + file)
+        file_label.pack(padx=10,pady=10,anchor='w')
+        window_height += 50
     sheets_window.title("Production Sheets")
     sheets_window.focus()
     x = (screen_width/2) - (500/2)
     y = (screen_height/2) - (500/2)
-    sheets_window.geometry("%dx%d+%d+%d" % (500,500,x,y))
+    sheets_window.geometry("%dx%d+%d+%d" % (300,window_height,x,y))
     sheets_window.resizable(0,0)
 
-#MENU BAR
+#create case labels toplevel window upon clicking the menu option,
+#populate with files within case_labels folder
+def labels_view():
+    labels_window = Toplevel(window)
+    files = os.listdir(os.getcwd() + "\\case_labels")
+    window_height = 0
+    for file in files:
+        mo = modules.fileRegex.search(file)
+        file_name = mo.group(1)
+        file_label = modules.Sheet_Label(master=labels_window,text=file_name,file_location= os.getcwd() + "\\case_labels\\" + file)
+        file_label.pack(padx=10,pady=10,anchor='w')
+        window_height += 50
+    labels_window.title("Case Labels")
+    labels_window.focus()
+    x = (screen_width/2) - (500/2)
+    y = (screen_height/2) - (500/2)
+    labels_window.geometry("%dx%d+%d+%d" % (300,window_height,x,y))
+    labels_window.resizable(0,0)
+
+#create menu bar at the top of the gui, populate with clickable tabs
 menubar = Menu(window)
 
 menu1 = Menu(menubar, tearoff=0)
-menu1.add_command(label="Bottles", command=lambda: modules.view_widget(window,bottle_inv,10,BOTTOM))
-menu1.add_command(label="Grain", command=lambda: modules.view_widget(window,grain_inv,10,BOTTOM))
-menu1.add_command(label="Barrels", command=lambda: modules.view_widget(window,barrel_inv,10,BOTTOM))
+menu1.add_command(label="Bottles", command=lambda: modules.view_widget(window,bottle_inventory_notebook,10,BOTTOM))
+menu1.add_command(label="Grain", command=lambda: modules.view_widget(window,grain_inventory_notebook,10,BOTTOM))
+menu1.add_command(label="Barrels", command=lambda: modules.view_widget(window,barrel_inventory_notebook,10,BOTTOM))
 menubar.add_cascade(label="Inventory", menu=menu1)
 
 menu2 = Menu(menubar, tearoff=0)
-menu2.add_command(label="Purchase Orders", command=lambda: modules.view_widget(window,purchase_orders,10,BOTTOM))
-menu2.add_command(label="Employee Transactions", command=lambda: modules.view_widget(window,employee_transactions,10,BOTTOM))
+menu2.add_command(label="Purchase Orders", command=lambda: modules.view_widget(window,purchase_orders_notebook,10,BOTTOM))
+menu2.add_command(label="Employee Transactions", command=lambda: modules.view_widget(window,employee_transactions_notebook,10,BOTTOM))
 menubar.add_cascade(label="Shipping and Transactions",menu=menu2)
 
 menu3 = Menu(menubar, tearoff=0)
 menu3.add_command(label="Production Sheets", command=sheets_view)
-menu3.add_command(label="Case Labels")
+menu3.add_command(label="Case Labels", command=labels_view)
 menubar.add_cascade(label="Files", menu=menu3)
 
 window.config(menu=menubar)
 
-
-
-
-
-
-
-
+modules.conn.close()
 window.mainloop()

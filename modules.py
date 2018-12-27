@@ -1,93 +1,61 @@
 import sqlite3
-try:
-    from Tkinter import Label
-    from ttk import Style
-    from tkFont import Font, nametofont
-except ImportError:
-    from tkinter import Label
-    from tkinter.ttk import Style
-    from tkinter.font import Font, nametofont
+from tkinter import *
+import os
+import webbrowser
+import re
 
 def database():
     global conn,cur
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
-    cur.execute("CREATE TABLE IF NOT EXISTS bottles (id INTEGER PRIMARY KEY,item TEXT, amount INTEGER)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'raw materials' (id INTEGER PRIMARY KEY,item TEXT, amount INTEGER, price REAL, total REAL)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'production log' (id INTEGER PRIMARY KEY,product TEXT, amount INTEGER)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'materials used' (id INTEGER PRIMARY KEY,product TEXT, amount INTEGER, date DATE)")
+    cur.execute("CREATE TABLE IF NOT EXISTS bottles (id INTEGER PRIMARY KEY,item TEXT, amount INTEGER,price REAL, total REAL)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'grain inventory' (id INTEGER PRIMARY KEY,'order no.' TEXT, type TEXT, amount INTEGER,price REAL, total REAL)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'barrel inventory' (id INTEGER PRIMARY KEY,'barrel no.' TEXT, spirit TEXT,'proof gallons' INTEGER, 'date filled' DATE, age TEXT,investor TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'purchase orders' (date DATE,product TEXT, amount INTEGER, price REAL, total REAL, destination TEXT, 'PO no.' TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'employee transactions' (date DATE,product TEXT, amount INTEGER, employee TEXT)")
+    conn.commit()
+
+def add_item(table):
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("INSERT INTO bottles VALUES (NULL,?,?)",(item,amount,price,total))
     #cur.execute("INSERT INTO bottles VALUES (NULL,?,?)", ('',120))
     conn.commit()
 
 def view_widget(window,widget,padx,location):
-
     for widg in window.pack_slaves():
         widg.pack_forget()
 
     widget.pack(padx=padx, side=location)
 
-def get_background_of_widget(widget):
-    try:
-        # We assume first tk widget
-        background = widget.cget("background")
-    except:
-        # Otherwise this is a ttk widget
-        style = widget.cget("style")
+class Sheet_Label(Label):
+    def __init__(self,master,text,file_location):
 
-        if style == "":
-            # if there is not style configuration option, default style is the same than widget class
-            style = widget.winfo_class()
+        Label.__init__(self,master,text=text,cursor="hand2",font="Times 14 underline",fg="#0000EE")
+        def button_click(event):
+            if self['fg'] =="#0000EE":
+                self['fg'] = "#551A8B"
+            else:
+                self['fg'] = "#551A8B"
+            file = webbrowser.open_new(file_location)
+        self.bind("<Button-1>",func=button_click)
 
-        background = Style().lookup(style, 'background')
+class Inventory_Button(Button):
+    def __init__(self,master,text):
 
-    return background
+        Button.__init__(self,master,text=text,width=20,height=2)
 
-class Link_Button(Label, object):
-    def __init__(self, master, text, background=None, font=None, familiy=None, size=None, underline=True, visited_fg = "#551A8B", normal_fg = "#0000EE", visited=False, action=None):
-        self._visited_fg = visited_fg
-        self._normal_fg = normal_fg
+def button_maker(list,master_widget):
+    for item in list:
+        button = Inventory_Button(master=master_widget,text=item)
+        button.pack(anchor='center')
 
-        if visited:
-            fg = self._visited_fg
-        else:
-            fg = self._normal_fg
-
-        if font is None:
-            default_font = nametofont("TkDefaultFont")
-            family = default_font.cget("family")
-
-            if size is None:
-                size = default_font.cget("size")
-
-            font = Font(family=family, size=size, underline=underline)
-
-        Label.__init__(self, master, text=text, fg=fg, cursor="hand2", font=font)
-
-        if background is None:
-            background = get_background_of_widget(master)
-
-        self.configure(background=background)
-
-        self._visited = visited
-        self._action = action
-
-        self.bind("<Button-1>", self._on_click)
-
-    @property
-    def visited(self):
-        return self._visited
-
-    @visited.setter
-    def visited(self, is_visited):
-        if is_visited:
-            self.configure(fg=self._visited_fg)
-            self._visited = True
-        else:
-            self.configure(fg=self._normal_fg)
-            self._visited = False
-
-    def _on_click(self, event):
-        if not self._visited:
-            self.configure(fg=self._visited_fg)
-
-        self._visited = True
-
-        if self._action:
-            self._action()
+#used to search for the string literal within a filename that occurs before the
+#file extension
+fileRegex = re.compile(r'''
+    ([a-zA-Z0-9_ -]+)
+    (.)
+    ([a-zA-Z_0-9])''',re.VERBOSE)
