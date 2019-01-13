@@ -2,6 +2,7 @@ from tkinter import *
 import sqlite3
 import modules
 from tkinter import ttk
+from tkcalendar import Calendar
 import os
 import webbrowser
 
@@ -37,26 +38,22 @@ bottle_inventory_notebook.add(bottle_frame, text = "Bottle Inventory",padding=10
 bottle_inventory_notebook.pack(padx=10, side = BOTTOM)
 
 #create raw materials table and populate with data from raw materials database
-raw_materials_table = ttk.Treeview(raw_materials_frame, column = ("ID","Type","Item","Amount","Price","Total"), show = "headings",height=600)
+raw_materials_table = ttk.Treeview(raw_materials_frame, column = ("Type","Item","Amount","Price","Total"), show = "headings",height=600)
 w=int(796/(len(raw_materials_table['columns'])))
-raw_materials_table.column("ID", anchor="center", width=w)
 raw_materials_table.column("Type", anchor="center", width=w)
 raw_materials_table.column("Item", anchor="center", width=w)
 raw_materials_table.column("Amount", anchor="center", width=w)
 raw_materials_table.column("Price", anchor="center", width=w)
 raw_materials_table.column("Total", anchor="center", width=w)
-raw_materials_table.heading("#1", text = "ID")
-raw_materials_table.heading("#2", text = "Type")
-raw_materials_table.heading("#3", text="Item")
-raw_materials_table.heading("#4", text="Amount")
-raw_materials_table.heading("#5", text = "Price")
-raw_materials_table.heading("#6", text = "Total")
+raw_materials_table.heading("#1", text = "Type")
+raw_materials_table.heading("#2", text="Item")
+raw_materials_table.heading("#3", text="Amount")
+raw_materials_table.heading("#4", text = "Price")
+raw_materials_table.heading("#5", text = "Total")
 raw_materials_table.pack(side=RIGHT,fill = Y)
 
-modules.cur.execute("SELECT * FROM 'raw materials'")
-rows = modules.cur.fetchall()
-for row in rows:
-    raw_materials_table.insert("",END,values = row)
+#show table upon opening application
+modules.view_products('raw materials','null','All',raw_materials_table)
 
 #create raw materials command frame and populate with view and options buttons
 raw_materials_command_frame = Frame(raw_materials_frame, height = 600,width=50)
@@ -66,8 +63,9 @@ raw_materials_view_buttons = ["Bottles","Boxes","Caps","Capsules","Labels","All"
 modules.button_maker(modules.View_Button,raw_materials_view_buttons,raw_materials_view_frame,'raw materials',raw_materials_table)
 
 raw_materials_option_frame = LabelFrame(raw_materials_command_frame,height = 300, text = "Options", bd = 5, relief = RIDGE, font = "bold")
-raw_materials_option_buttons = ["Production","Raw Materials Received","Add Item","Remove Item","Edit Selection"]
-modules.button_maker(modules.Inventory_Button,raw_materials_option_buttons,raw_materials_option_frame,'raw materials',raw_materials_table)
+raw_button1 = Button(raw_materials_option_frame,text="Add Item",width=20,height=2, command = lambda: add_item_view('raw materials'))
+raw_button1.pack(anchor='center')
+
 
 raw_materials_command_frame.pack()
 raw_materials_view_frame.pack()
@@ -97,35 +95,31 @@ production_command_frame.pack()
 production_opt_frame.pack()
 
 #create materials used table
-materials_used_table = ttk.Treeview(materials_used_frame,column=("ID", "Product", "Amount","Date"), show="headings", height=600)
+materials_used_table = ttk.Treeview(materials_used_frame,column=("Product", "Amount","Date"), show="headings", height=600)
 w=int(796/(len(materials_used_table['columns'])))
-materials_used_table.column("ID", anchor="center", width=w)
 materials_used_table.column("Product", anchor="center", width=w)
 materials_used_table.column("Amount", anchor="center", width=w)
 materials_used_table.column("Date", anchor="center", width=w)
-materials_used_table.heading("#1", text = "ID")
-materials_used_table.heading("#2", text="Product")
-materials_used_table.heading("#3", text="Amount")
-materials_used_table.heading("#4", text="Date")
+materials_used_table.heading("#1", text="Product")
+materials_used_table.heading("#2", text="Amount")
+materials_used_table.heading("#3", text="Date")
 materials_used_table.pack(fill='both')
 
 #TODO: populate materials used table
 
 #create bottle table
-bottle_table = ttk.Treeview(bottle_frame,column=("ID","Type","Product","Amount","Price","Total"), show="headings", height=600)
+bottle_table = ttk.Treeview(bottle_frame,column=("Type","Product","Amount","Price","Total"), show="headings", height=600)
 w = int(796/ (len(bottle_table['columns'])))
-bottle_table.column("ID", anchor="center", width=w)
 bottle_table.column("Type", anchor="center", width=w)
 bottle_table.column("Product", anchor="center", width=w)
 bottle_table.column("Amount", anchor="center", width=w)
 bottle_table.column("Price", anchor="center", width=w)
 bottle_table.column("Total", anchor="center", width=w)
-bottle_table.heading("#1", text="ID")
-bottle_table.heading("#2", text="Type")
-bottle_table.heading("#3", text="Product")
-bottle_table.heading("#4", text="Amount")
-bottle_table.heading("#5", text="Price")
-bottle_table.heading("#6", text="Total")
+bottle_table.heading("#1", text="Type")
+bottle_table.heading("#2", text="Product")
+bottle_table.heading("#3", text="Amount")
+bottle_table.heading("#4", text="Price")
+bottle_table.heading("#5", text="Total")
 bottle_table.pack(side=RIGHT,fill = Y)
 
 #create bottle command frame and populate with view and option buttons
@@ -136,8 +130,8 @@ bottle_view_buttons = ["Vodka","Whiskey","Rum","Other","All"]
 modules.button_maker(modules.View_Button,bottle_view_buttons,bottle_view_frame,'bottles',bottle_table)
 
 bottle_option_frame = LabelFrame(bottle_command_frame, height=300, bd=5, relief=RIDGE, text="Options", font="bold")
-bottle_option_buttons = ["Add Item","Remove Item","Edit Selection"]
-modules.button_maker(modules.Inventory_Button,bottle_option_buttons,bottle_option_frame,'bottles',bottle_table)
+bot_button1 = Button(bottle_option_frame,text="Add Item",width=20,height=2, command = lambda: add_item_view('bottles'))
+bot_button1.pack(anchor='center')
 
 bottle_view_frame.pack()
 bottle_option_frame.pack()
@@ -149,20 +143,18 @@ grain_inventory_frame = ttk.Frame(grain_inventory_notebook)
 grain_inventory_notebook.add(grain_inventory_frame, text="Grain Inventory", padding=10)
 
 #create grain inventory table and pack within grain frame
-grain_table = ttk.Treeview(grain_inventory_frame, column=("ID","Order No.","Type","Amount","Price","Total"),show="headings",height=600)
+grain_table = ttk.Treeview(grain_inventory_frame, column=("Order No.","Type","Amount","Price","Total"),show="headings",height=600)
 w=int(796/(len(grain_table['columns'])))
-grain_table.column("ID",anchor="center",width=w)
 grain_table.column("Order No.",anchor="center",width=w)
 grain_table.column("Type",anchor="center",width=w)
 grain_table.column("Amount",anchor="center",width=w)
 grain_table.column("Price",anchor="center",width=w)
 grain_table.column("Total",anchor='center',width=w)
-grain_table.heading("#1", text="ID")
-grain_table.heading("#2", text="Order No.")
-grain_table.heading("#3", text="Type")
-grain_table.heading("#4", text="Amount")
-grain_table.heading("#5", text="Price")
-grain_table.heading("#6", text="Total")
+grain_table.heading("#1", text="Order No.")
+grain_table.heading("#2", text="Type")
+grain_table.heading("#3", text="Amount")
+grain_table.heading("#4", text="Price")
+grain_table.heading("#5", text="Total")
 grain_table.pack(side=RIGHT, fill=Y)
 
 #create grain command frame and populate with option buttons
@@ -205,8 +197,8 @@ barrel_view_buttons = ["Bourbon","Rye","Malt","Other","All"]
 modules.button_maker(modules.View_Button,barrel_view_buttons,barrel_view_frame,'barrel inventory',barrel_table)
 
 barrel_option_frame = LabelFrame(barrel_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
-barrel_option_buttons = ["Fill Barrel","Empty Barrel","Edit Selection"]
-modules.button_maker(modules.Inventory_Button,barrel_option_buttons,barrel_option_frame,'barrel inventory',barrel_table)
+bar_button1 = Button(barrel_option_frame,text="Add Barrel",width=20,height=2,command = lambda: add_item_view('barrel inventory'))
+bar_button1.pack(anchor='center')
 
 barrel_command_frame.pack()
 barrel_view_frame.pack()
@@ -312,6 +304,42 @@ def labels_view():
     labels_window.geometry("%dx%d+%d+%d" % (300,window_height,x,y))
     labels_window.resizable(0,0)
 
+#creates toplevel populated by inputs for items in table
+def add_item_view(table):
+    window_height = 0
+    add_view = Toplevel(window)
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM \'" + table + "\'")
+    for index,description in enumerate(cur.description): #add labels and entries
+        if (description[0] != 'id'):
+            label = Label(add_view,text=description[0])
+            label.grid(row=index,column=0)
+            entry = Entry(add_view)
+            entry.grid(row=index, column=1)
+            window_height += 35
+            if (description[0].find('date') != -1):  #add calendar selection widget
+                date_index = index
+                def cal_button():
+                    top = Toplevel(window)
+                    cal = Calendar(top, font="Arial 14", selectmode='day', locale='en_US',
+                                   cursor="hand2", year=2018, month=2, day=5)
+                    cal.pack(fill="both", expand=True)
+                    Button(top, text="ok", command = lambda: add_view.grid_slaves(row=date_index,column=1)[0].insert(END,cal.selection_get())).pack() #insert date into date entry
+                    top.focus()
+                Button(add_view,text="calendar",command=cal_button).grid(row=index,column=2)
+    grid_size = add_view.grid_size()[1] #used to place add/cancel buttons below all other buttons
+    add_button = Button(add_view,text="Add Item",command = lambda: modules.add_item(table,add_view))
+    add_button.grid(row=grid_size+1,column=1)
+    cancel_button = Button(add_view,text="Cancel",command = lambda: add_view.destroy())
+    cancel_button.grid(row=grid_size+2,column=1)
+    add_view.title("Add to " + table)
+    add_view.focus()
+    x = (screen_width/2) - (500/2)
+    y = (screen_height/2) - (500/2)
+    add_view.geometry("%dx%d+%d+%d" % (300,window_height,x,y))
+    add_view.resizable(0,0)
+
 #create menu bar at the top of the gui, populate with clickable tabs
 menubar = Menu(window)
 
@@ -332,8 +360,4 @@ menu3.add_command(label="Case Labels", command=labels_view)
 menubar.add_cascade(label="Files", menu=menu3)
 
 window.config(menu=menubar)
-
-modules.add_item()
-
-modules.conn.close()
 window.mainloop()

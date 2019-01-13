@@ -8,31 +8,42 @@ def database():
     global conn,cur
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
-    cur.execute("CREATE TABLE IF NOT EXISTS 'raw materials' (id INTEGER PRIMARY KEY,type TEXT,item TEXT, amount INTEGER, price REAL, total REAL)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'raw materials' (type TEXT,item TEXT, amount INTEGER, price REAL, total REAL)")
     cur.execute("UPDATE 'raw materials' SET 'total'= PRINTF('%s%g', '$', amount*price)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'production log' (id INTEGER PRIMARY KEY,product TEXT, amount INTEGER)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'bottles' (id INTEGER PRIMARY KEY,type TEXT, item TEXT, amount INTEGER,price REAL, total REAL)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'production log' (product TEXT, amount INTEGER)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'bottles' (type TEXT, product TEXT, amount INTEGER,price REAL, total REAL)")
     cur.execute("UPDATE 'bottles' SET 'total'= PRINTF('%s%g', '$', amount*price)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'grain inventory' (id INTEGER PRIMARY KEY,'order no.' TEXT, type TEXT, amount INTEGER,price REAL, total REAL)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'grain inventory' ('order no.' TEXT, type TEXT, amount INTEGER,price REAL, total REAL)")
     cur.execute("UPDATE 'grain inventory' SET 'total'= PRINTF('%s%g', '$', amount*price)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'barrel inventory' (id INTEGER PRIMARY KEY,'barrel no.' TEXT, type TEXT,'proof gallons' INTEGER, 'date filled' DATE, age TEXT,investor TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'barrel inventory' ('barrel no.' TEXT, type TEXT,'proof gallons' INTEGER, 'date filled' DATE, age TEXT,investor TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'purchase orders' (date DATE,product TEXT, amount INTEGER, price REAL, total REAL, destination TEXT, 'PO no.' TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'employee transactions' (date DATE,product TEXT, amount INTEGER, employee TEXT)")
     conn.commit()
+    conn.close()
 
-def add_item():
+def add_item(sqlite_table,toplevel_widg):
+    additions = []
+    num_entries = 0
+    for entry in reversed(toplevel_widg.grid_slaves()): #work through add item entry boxes
+        if entry.winfo_class() == 'Entry':
+            additions.append(entry.get())   #append entry to list
+            num_entries += 1
+    print(str(additions) + " and " + str(num_entries))
+    additions = tuple(additions)
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
-    cur.execute("INSERT INTO 'bottles' VALUES (NULL,?,?,?,?,?)",("Vodka","Vodka","43","12.15","32"))
-    cur.execute("INSERT INTO 'raw materials' VALUES (NULL,?,?,?,?,?)",("Caps","red","24","32","12.27"))
+    cur.execute("INSERT INTO \'" + sqlite_table + "\' VALUES (" + ("?,"*(num_entries-1)) + "?)", additions)
     conn.commit()
+    conn.close()
 
+#removes current widget from window and replaces with new widget clicked upon
 def view_widget(window,widget,padx,location):
     for widg in window.pack_slaves():
         widg.pack_forget()
-
     widget.pack(padx=padx, side=location)
 
+#fetches info from database based upon view button clicked and returns info into
+#the table
 def view_products(sqlite_table,column,item,gui_table):
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
@@ -46,6 +57,7 @@ def view_products(sqlite_table,column,item,gui_table):
     for row in rows:
         gui_table.insert("",END,values = row)
 
+#clickable label with link to file in given folder
 class Sheet_Label(Label):
     def __init__(self,master,text,file_location):
 
@@ -58,18 +70,21 @@ class Sheet_Label(Label):
             file = webbrowser.open_new(file_location)
         self.bind("<Button-1>",func=button_click)
 
+#gives view button functionality to view items by type
 class View_Button(Button):
     def __init__(self,master,text,sqlite_table,gui_table):
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
         Button.__init__(self,master,text=text,command = lambda: view_products(sqlite_table,"Type",text,gui_table),width=20,height=2)
 
+#gives production buttons functionality
 class Inventory_Button(Button):
     def __init__(self,master,text,sqlite_table,gui_table):
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
         Button.__init__(self,master,text=text,width=20,height=2)
 
+#iterates through list of items and creates buttons based on 'class_name' object
 def button_maker(class_name,list,master_widget,sqlite_table,gui_table):
     for item in list:
         button = class_name(master=master_widget,text=item,sqlite_table=sqlite_table,gui_table=gui_table)
