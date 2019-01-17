@@ -3,6 +3,7 @@ from tkinter import *
 import os
 import webbrowser
 import re
+from tkinter import messagebox
 
 def database():
     global conn,cur
@@ -22,29 +23,57 @@ def database():
     conn.close()
 
 def add_item(sqlite_table,toplevel_widg):
+    '''Work through toplevel to find entry widgets and extract these values to be
+    inserted into the given sqlite_table.
+
+    Parameters:
+    sqlite_table (str):The name of the sqlite table to add items to.
+    toplevel_widg (Tk toplevel object):The toplevel widget object to be worked through.
+    '''
+
     additions = []
     num_entries = 0
-    for entry in reversed(toplevel_widg.grid_slaves()): #work through add item entry boxes
-        if entry.winfo_class() == 'Entry':
-            additions.append(entry.get())   #append entry to list
+    for entry in filter(lambda x: x.winfo_class() == 'Entry',reversed(toplevel_widg.grid_slaves())): #work through add_item entry widgets
+        if entry.get():
+            additions.append(entry.get())
             num_entries += 1
-    print(str(additions) + " and " + str(num_entries))
+        else:
+            messagebox.showerror("Input Error","At least one input is blank, please try again.")
+            return
     additions = tuple(additions)
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("INSERT INTO \'" + sqlite_table + "\' VALUES (" + ("?,"*(num_entries-1)) + "?)", additions)
     conn.commit()
     conn.close()
+    toplevel_widg.destroy()
 
-#removes current widget from window and replaces with new widget clicked upon
 def view_widget(window,widget,padx,location):
+    '''Removes current packed widgets from window frame and replaces with new widget
+    chosen.
+
+    Parameters:
+    window (Tk root object):Master window to remove widgets from
+    widget (Tk widget object):Widget to be displayed
+    padx (int):Widget x-padding value
+    location (str):Position to place new widget
+    '''
+
     for widg in window.pack_slaves():
         widg.pack_forget()
     widget.pack(padx=padx, side=location)
 
-#fetches info from database based upon view button clicked and returns info into
-#the table
 def view_products(sqlite_table,column,item,gui_table):
+    '''Fetches info from sqlite_table based on an item filter. Returns information
+    into the current gui_table.
+
+    Parameters:
+    sqlite_table(str):Sqlite table to fetch data from.
+    column (str):Column to which the 'item' filter is applied.
+    item (str):Item which is filtered for.
+    gui_table (Tk treeview object):Table where info will be displayed.
+    '''
+
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     if item == "All":
@@ -57,12 +86,20 @@ def view_products(sqlite_table,column,item,gui_table):
     for row in rows:
         gui_table.insert("",END,values = row)
 
-#clickable label with link to file in given folder
 class Sheet_Label(Label):
+    '''Creates a clickable label with link to file in given file location.
+
+    Parameters:
+    master (Tk widget object):Tkinter widget to place label button within.
+    text (str):Text value to be displayed for the label.
+    file_location (str):Directory containing the file to be linked.
+    '''
+
     def __init__(self,master,text,file_location):
 
         Label.__init__(self,master,text=text,cursor="hand2",font="Times 14 underline",fg="#0000EE")
         def button_click(event):
+            '''Changes label color from 'blue' to 'purple' and opens the file.'''
             if self['fg'] =="#0000EE":
                 self['fg'] = "#551A8B"
             else:
@@ -90,8 +127,7 @@ def button_maker(class_name,list,master_widget,sqlite_table,gui_table):
         button = class_name(master=master_widget,text=item,sqlite_table=sqlite_table,gui_table=gui_table)
         button.pack(anchor='center')
 
-#used to search for the string literal within a filename that occurs before the
-#file extension
+#used to search for the string literal within a filename that occurs before the file extension (Ex. '.txt')
 fileRegex = re.compile(r'''
     ([a-zA-Z0-9_ -]+)
     (.)

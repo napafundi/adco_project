@@ -63,9 +63,7 @@ raw_materials_view_buttons = ["Bottles","Boxes","Caps","Capsules","Labels","All"
 modules.button_maker(modules.View_Button,raw_materials_view_buttons,raw_materials_view_frame,'raw materials',raw_materials_table)
 
 raw_materials_option_frame = LabelFrame(raw_materials_command_frame,height = 300, text = "Options", bd = 5, relief = RIDGE, font = "bold")
-raw_button1 = Button(raw_materials_option_frame,text="Add Item",width=20,height=2, command = lambda: add_item_view('raw materials'))
-raw_button1.pack(anchor='center')
-
+Button(raw_materials_option_frame,text="Add Item",width=20,height=2, command = lambda: add_item_view('raw materials')).pack(anchor='center')
 
 raw_materials_command_frame.pack()
 raw_materials_view_frame.pack()
@@ -88,8 +86,7 @@ production_table.pack(side=RIGHT, fill=Y)
 production_command_frame = Frame(production_frame,height=600,width=50)
 
 production_opt_frame = LabelFrame(production_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
-bp1 = Button(production_opt_frame,text="Edit Selection",width=20,height=2)
-bp1.pack(anchor='center')
+Button(production_opt_frame,text="Edit Selection",width=20,height=2).pack(anchor='center')
 
 production_command_frame.pack()
 production_opt_frame.pack()
@@ -130,8 +127,7 @@ bottle_view_buttons = ["Vodka","Whiskey","Rum","Other","All"]
 modules.button_maker(modules.View_Button,bottle_view_buttons,bottle_view_frame,'bottles',bottle_table)
 
 bottle_option_frame = LabelFrame(bottle_command_frame, height=300, bd=5, relief=RIDGE, text="Options", font="bold")
-bot_button1 = Button(bottle_option_frame,text="Add Item",width=20,height=2, command = lambda: add_item_view('bottles'))
-bot_button1.pack(anchor='center')
+Button(bottle_option_frame,text="Add Item",width=20,height=2, command = lambda: add_item_view('bottles')).pack(anchor='center')
 
 bottle_view_frame.pack()
 bottle_option_frame.pack()
@@ -197,8 +193,7 @@ barrel_view_buttons = ["Bourbon","Rye","Malt","Other","All"]
 modules.button_maker(modules.View_Button,barrel_view_buttons,barrel_view_frame,'barrel inventory',barrel_table)
 
 barrel_option_frame = LabelFrame(barrel_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
-bar_button1 = Button(barrel_option_frame,text="Add Barrel",width=20,height=2,command = lambda: add_item_view('barrel inventory'))
-bar_button1.pack(anchor='center')
+Button(barrel_option_frame,text="Add Barrel",width=20,height=2,command = lambda: add_item_view('barrel inventory')).pack(anchor='center')
 
 barrel_command_frame.pack()
 barrel_view_frame.pack()
@@ -308,31 +303,34 @@ def labels_view():
 def add_item_view(table):
     window_height = 0
     add_view = Toplevel(window)
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
+    cur = sqlite3.Connection("inventory.db").cursor()
     cur.execute("SELECT * FROM \'" + table + "\'")
-    for index,description in enumerate(cur.description): #add labels and entries
+    for index,description in enumerate(cur.description): #add labels and entries based on database labels
         if (description[0] != 'id'):
-            label = Label(add_view,text=description[0])
-            label.grid(row=index,column=0)
-            entry = Entry(add_view)
-            entry.grid(row=index, column=1)
+            Label(add_view,text=description[0]).grid(row=index,column=0)
+            Entry(add_view).grid(row=index, column=1)
             window_height += 35
-            if (description[0].find('date') != -1):  #add calendar selection widget
+            if (description[0].find('date') != -1):  #add calendar selection widget for date entry
                 date_index = index
+                date_entry = add_view.grid_slaves(row=date_index,column=1)[0]
+                date_entry.config(state="readonly")
                 def cal_button():
                     top = Toplevel(window)
                     cal = Calendar(top, font="Arial 14", selectmode='day', locale='en_US',
-                                   cursor="hand2", year=2018, month=2, day=5)
+                                   cursor="hand2")
                     cal.pack(fill="both", expand=True)
-                    Button(top, text="ok", command = lambda: add_view.grid_slaves(row=date_index,column=1)[0].insert(END,cal.selection_get())).pack() #insert date into date entry
+                    def retrieve_date():
+                        date_entry.config(state=NORMAL)
+                        date_entry.delete(0,END)
+                        date_entry.insert(END,cal.selection_get().strftime('%m-%d-%Y'))
+                        date_entry.config(state="readonly")
+                        top.destroy()
+                    Button(top, text="ok", command = retrieve_date).pack() #insert date into date entry
                     top.focus()
-                Button(add_view,text="calendar",command=cal_button).grid(row=index,column=2)
+                Button(add_view,text="CALENDAR",command=cal_button).grid(row=index,column=2)
     grid_size = add_view.grid_size()[1] #used to place add/cancel buttons below all other buttons
-    add_button = Button(add_view,text="Add Item",command = lambda: modules.add_item(table,add_view))
-    add_button.grid(row=grid_size+1,column=1)
-    cancel_button = Button(add_view,text="Cancel",command = lambda: add_view.destroy())
-    cancel_button.grid(row=grid_size+2,column=1)
+    Button(add_view,text="Add Item",command = lambda: modules.add_item(table,add_view)).grid(row=grid_size+1,column=1)
+    Button(add_view,text="Cancel",command = lambda: add_view.destroy()).grid(row=grid_size+2,column=1)
     add_view.title("Add to " + table)
     add_view.focus()
     x = (screen_width/2) - (500/2)
