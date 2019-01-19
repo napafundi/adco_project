@@ -33,9 +33,12 @@ def add_item(sqlite_table,toplevel_widg):
 
     additions = []
     num_entries = 0
-    for entry in filter(lambda x: x.winfo_class() == 'Entry',reversed(toplevel_widg.grid_slaves())): #work through add_item entry widgets
+    entries = [x for x in reversed(toplevel_widg.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == 'Menubutton')]
+    print(entries)
+    for entry in entries: #work through add_item entry widgets
         if entry.get():
-            additions.append(entry.get())
+            additions.append(' '.join(word[0].upper() + word[1:] for word in entry.get().split())) #titlecase the string before appending
+            print(entry.get())
             num_entries += 1
         else:
             messagebox.showerror("Input Error","At least one input is blank, please try again.")
@@ -43,12 +46,12 @@ def add_item(sqlite_table,toplevel_widg):
     additions = tuple(additions)
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
-    cur.execute("INSERT INTO \'" + sqlite_table + "\' VALUES (" + ("?,"*(num_entries-1)) + "?)", additions)
+    #cur.execute("INSERT INTO \'" + sqlite_table + "\' VALUES (" + ("?,"*(num_entries-1)) + "?)", additions)
     conn.commit()
     conn.close()
     toplevel_widg.destroy()
 
-def view_widget(window,widget,padx,location):
+def view_widget(window,widget,padx,location,sqlite_table,column,item,gui_table):
     '''Removes current packed widgets from window frame and replaces with new widget
     chosen.
 
@@ -62,6 +65,7 @@ def view_widget(window,widget,padx,location):
     for widg in window.pack_slaves():
         widg.pack_forget()
     widget.pack(padx=padx, side=location)
+    view_products(sqlite_table,column,item,gui_table)
 
 def view_products(sqlite_table,column,item,gui_table):
     '''Fetches info from sqlite_table based on an item filter. Returns information
