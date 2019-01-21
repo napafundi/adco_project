@@ -6,6 +6,7 @@ import os
 import webbrowser
 from PIL import Image, ImageTk
 import re
+from datetime import datetime
 
 def database():
     global conn,cur
@@ -18,7 +19,8 @@ def database():
     cur.execute("UPDATE 'bottles' SET 'total'= PRINTF('%s%g', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'grain inventory' ('order no.' TEXT, type TEXT, amount INTEGER,price REAL, total REAL)")
     cur.execute("UPDATE 'grain inventory' SET 'total'= PRINTF('%s%g', '$', amount*price)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'barrel inventory' ('barrel no.' TEXT, type TEXT,'proof gallons' INTEGER, 'date filled' DATE, age TEXT,investor TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'barrel inventory' ('barrel no.' TEXT, type TEXT,'proof gallons' INTEGER, 'filled' DATE, age TEXT,investor TEXT)")
+    cur.execute("UPDATE 'barrel inventory' SET 'age'= PRINTF('%d years, %d months',(julianday('now') - julianday(filled)) / 365,(julianday('now') - julianday(filled)) % 365 / 30)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'purchase orders' (date DATE,product TEXT, amount INTEGER, price REAL, total REAL, destination TEXT, 'PO no.' TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'employee transactions' (date DATE,product TEXT, amount INTEGER, employee TEXT)")
     conn.commit()
@@ -134,14 +136,21 @@ class View_Button(Button):
     def __init__(self,master,text,sqlite_table,gui_table):
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
-        Button.__init__(self,master,text=text,command = lambda: view_products(sqlite_table,"Type",text,gui_table),width=20,height=2, font=('Calibri',13,'bold'))
+        Button.__init__(self,master,text=text,command = lambda: view_products(sqlite_table,"Type",text,gui_table),width=20,height=2, font=('Calibri',12,'bold'))
 
 #gives production buttons functionality
 class Inventory_Button(Button):
     def __init__(self,master,text,sqlite_table,gui_table):
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
-        Button.__init__(self,master,text=text,width=20,height=2,font=('Calibri',13,'bold'))
+        Button.__init__(self,master,text=text,width=20,height=2,font=('Calibri',12,'bold'))
+
+class Logistics_Button(Button):
+    def __init__(self,master,text,sqlite_table,gui_table,command):
+        self.sqlite_table = sqlite_table
+        self.gui_table = gui_table
+        Button.__init__(self,master=master,text=text,width=20,height=2,font=('Calibri',12,'bold'),command=command)
+        self.pack(anchor='center')
 
 class Treeview_Table(ttk.Treeview):
     def __init__(self,master,columns):
@@ -156,8 +165,8 @@ class Treeview_Table(ttk.Treeview):
 #iterates through list of items and creates buttons based on 'class_name' object
 def button_maker(class_name,list,master_widget,sqlite_table,gui_table):
     for item in list:
-        button = class_name(master=master_widget,text=item,sqlite_table=sqlite_table,gui_table=gui_table)
-        button.pack(anchor='center')
+        class_name(master=master_widget,text=item,sqlite_table=sqlite_table,gui_table=gui_table).pack(anchor='center')
+
 
 #create production sheets toplevel window upon clicking the menu option,
 #populate with files within production_sheets folder
@@ -208,7 +217,7 @@ def add_item_view(table):
             Label(add_view,text=description[0]).grid(row=index,column=0)
             Entry(add_view).grid(row=index, column=1)
             window_height += 35
-            if (description[0].find('date') != -1):  #add calendar selection widget for date entry
+            if (description[0].find('filled') != -1 or description[0].find('date') != -1):  #add calendar selection widget for date entry
                 date_index = index
                 date_entry = add_view.grid_slaves(row=date_index,column=1)[0]
                 date_entry.config(state="readonly")
@@ -220,7 +229,7 @@ def add_item_view(table):
                     def retrieve_date():
                         date_entry.config(state=NORMAL)
                         date_entry.delete(0,END)
-                        date_entry.insert(END,cal.selection_get().strftime('%m-%d-%Y'))
+                        date_entry.insert(END,cal.selection_get().strftime('%Y-%m-%d'))
                         date_entry.config(state="readonly")
                         top.destroy()
                     Button(top, text="ok", command = retrieve_date).pack() #insert date into date entry
@@ -286,8 +295,8 @@ s.layout("Custom.Treeview.Heading", [
     ]}),
 ])
 s.configure("Custom.Treeview.Heading", background="dark slate grey", foreground="white", relief="flat")
-s.configure("Treeview.Heading", font=('Calibri', 13,'bold'))
-s.configure("TButton",font=('Calibri',13,'bold'))
+s.configure("Treeview.Heading", font=('Calibri', 12,'bold'))
+s.configure("TButton",font=('Calibri',12,'bold'))
 
 #create/load and display database
 inventory = database()
@@ -318,7 +327,7 @@ raw_materials_view_buttons = ["Bottles","Boxes","Caps","Capsules","Labels","All"
 button_maker(View_Button,raw_materials_view_buttons,raw_materials_view_frame,'raw materials',raw_materials_table)
 
 raw_materials_option_frame = LabelFrame(raw_materials_command_frame,height = 300, text = "Options", bd = 5, relief = RIDGE, font = "bold")
-Button(raw_materials_option_frame,text="Add Item",width=20,height=2, command = lambda: add_item_view('raw materials'),font=('Calibri',13,'bold')).pack(anchor='center')
+Logistics_Button(raw_materials_option_frame,"Add Item",'raw materials',raw_materials_table,lambda: add_item_view('raw materials'))
 
 raw_materials_command_frame.pack()
 raw_materials_view_frame.pack()
@@ -354,7 +363,7 @@ bottle_view_buttons = ["Vodka","Whiskey","Rum","Other","All"]
 button_maker(View_Button,bottle_view_buttons,bottle_view_frame,'bottles',bottle_table)
 
 bottle_option_frame = LabelFrame(bottle_command_frame, height=300, bd=5, relief=RIDGE, text="Options", font="bold")
-Button(bottle_option_frame,text="Add Item",width=20,height=2, command = lambda: add_item_view('bottles')).pack(anchor='center')
+Logistics_Button(bottle_option_frame,"Add Item",'bottles',bottle_table,lambda: add_item_view('bottles'))
 
 bottle_view_frame.pack()
 bottle_option_frame.pack()
@@ -372,8 +381,9 @@ grain_table = Treeview_Table(grain_inventory_frame,("Order No.","Type","Amount",
 grain_command_frame = Frame(grain_inventory_frame,height=600,width=50)
 
 grain_option_frame = LabelFrame(grain_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
-grain_option_buttons = ["Produce Mash","Edit Selection","Mash Production Sheet"]
-button_maker(Inventory_Button,grain_option_buttons,grain_option_frame,'grain inventory',grain_table)
+Logistics_Button(grain_option_frame,"Produce Mash",'grain inventory',grain_table,None)
+Logistics_Button(grain_option_frame,"Edit Selection",'grain inventory',grain_table,None)
+Logistics_Button(grain_option_frame,"Mash Production Sheet",'grain inventory',grain_table,None)
 
 grain_command_frame.pack()
 grain_option_frame.pack()
@@ -394,7 +404,7 @@ barrel_view_buttons = ["Bourbon","Rye","Malt","Other","All"]
 button_maker(View_Button,barrel_view_buttons,barrel_view_frame,'barrel inventory',barrel_table)
 
 barrel_option_frame = LabelFrame(barrel_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
-Button(barrel_option_frame,text="Add Barrel",width=20,height=2,command = lambda: add_item_view('barrel inventory')).pack(anchor='center')
+Logistics_Button(barrel_option_frame,"Add Barrel",'barrel inventory',barrel_table,lambda: add_item_view('barrel inventory'))
 
 barrel_command_frame.pack()
 barrel_view_frame.pack()
@@ -412,8 +422,9 @@ purchase_orders_table = Treeview_Table(purchase_orders_frame,("Date","Product","
 purchase_orders_command_frame = Frame(purchase_orders_frame,height=600,width=50)
 
 purchase_orders_option_frame = LabelFrame(purchase_orders_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font='bold')
-purchase_orders_option_buttons = ["Create Purchase Order","View Purchase Order","Edit Selection"]
-button_maker(Inventory_Button,purchase_orders_option_buttons,purchase_orders_option_frame,'purchase orders',purchase_orders_table)
+Logistics_Button(purchase_orders_option_frame,"Create Purchase Order",'purchase orders',purchase_orders_table,None)
+Logistics_Button(purchase_orders_option_frame,"View Purchase Order",'purchase orders',purchase_orders_table,None)
+Logistics_Button(purchase_orders_option_frame,"Edit Selection",'purchase orders',purchase_orders_table,None)
 
 purchase_orders_command_frame.pack()
 purchase_orders_option_frame.pack()
@@ -430,8 +441,9 @@ employee_transactions_table = Treeview_Table(employee_transactions_frame,("Date"
 employee_transactions_command_frame = Frame(employee_transactions_frame,height=600,width=50)
 
 employee_transactions_options_frame = LabelFrame(employee_transactions_command_frame,height=300,bd=5,relief=RIDGE,text="Options",font="bold")
-employee_transactions_options_buttons = ["Checkout Bottles","Edit Selection"]
-button_maker(Inventory_Button,employee_transactions_options_buttons,employee_transactions_options_frame,'employee transactions',employee_transactions_table)
+Logistics_Button(employee_transactions_options_frame,"Checkout Bottles",'employee transactions',employee_transactions_table,None)
+Logistics_Button(employee_transactions_options_frame,"Edit Selection",'employee transactions',employee_transactions_table,None)
+
 
 employee_transactions_command_frame.pack()
 employee_transactions_options_frame.pack()
