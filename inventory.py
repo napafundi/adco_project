@@ -13,12 +13,12 @@ def database():
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("CREATE TABLE IF NOT EXISTS 'raw_materials' (type TEXT,item TEXT, amount INTEGER, price REAL, total REAL)")
-    cur.execute("UPDATE 'raw_materials' SET 'total'= PRINTF('%s%g', '$', amount*price)")
+    cur.execute("UPDATE 'raw_materials' SET 'total'= PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'production_log' (product TEXT, amount INTEGER)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'bottles' (type TEXT, product TEXT, amount INTEGER,price REAL, total REAL)")
-    cur.execute("UPDATE 'bottles' SET 'total'= PRINTF('%s%g', '$', amount*price)")
+    cur.execute("UPDATE 'bottles' SET 'total'= PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'grain' ('order_number' TEXT, type TEXT, amount INTEGER,price REAL, total REAL)")
-    cur.execute("UPDATE 'grain' SET 'total'= PRINTF('%s%g', '$', amount*price)")
+    cur.execute("UPDATE 'grain' SET 'total'= PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'barrels' ('barrel_number' TEXT, type TEXT,'pg' INTEGER, 'date_filled' DATE, age TEXT,investor TEXT)")
     cur.execute("UPDATE 'barrels' SET 'age'= PRINTF('%d years, %d months',(julianday('now') - julianday(date_filled)) / 365,(julianday('now') - julianday(date_filled)) % 365 / 30)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'purchase_orders' (date DATE,product TEXT, amount INTEGER, price REAL, total REAL, destination TEXT, 'po_number' TEXT)")
@@ -35,37 +35,6 @@ def db_update():
     cur.execute("UPDATE 'barrels' SET 'age'= PRINTF('%d years, %d months',(julianday('now') - julianday(date_filled)) / 365,(julianday('now') - julianday(date_filled)) % 365 / 30)")
     conn.commit()
     conn.close()
-
-def add_item(sqlite_table,toplevel_widg):
-    '''Work through toplevel to find entry widgets and extract these values to be
-    inserted into the given sqlite_table.
-
-    Parameters:
-    sqlite_table (str):The name of the sqlite table to add items to.
-    toplevel_widg (Tk toplevel object):The toplevel widget object to be worked through.
-    '''
-
-    additions = []
-    num_entries = 0
-    entries = [x for x in reversed(toplevel_widg.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == 'Menubutton')]
-    for entry in entries: #work through add_item entry widgets
-        if entry.winfo_class() == 'Entry':
-            additions.append(' '.join(word[0].upper() + word[1:] for word in entry.get().split())) #titlecase the string before appending
-            num_entries += 1
-        elif entry.winfo_class() == 'Menubutton':
-            additions.append(add_var.get())
-            num_entries += 1
-        else:
-            messagebox.showerror("Input Error","At least one input is blank, please try again.")
-            return
-    additions = tuple(additions)
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("INSERT INTO \'" + sqlite_table + "\' VALUES (" + ("?,"*(num_entries-1)) + "?)", additions)
-    conn.commit()
-    conn.close()
-    db_update()
-    toplevel_widg.destroy()
 
 def view_widget(window,widget,location,sqlite_table,column,item,gui_table):
     '''Removes current packed widgets from window frame and replaces with new widget
@@ -110,6 +79,64 @@ def view_products(sqlite_table,column,item,gui_table):
             tag = 'odd'
         gui_table.insert("",END,values = row,tags=(tag,))
     gui_table.tag_configure('even', background='#E8E8E8')
+
+def edit_selection_view(sqlite_table,gui_table):
+    item_values = gui_table.item(gui_table.selection())['values']
+    if item_values:
+        print(item_values)
+        edit_view = Toplevel(window)
+        window_height = 0
+        for index,description in enumerate(gui_table.columns):
+            if (description.lower() != 'type'):
+                Label(edit_view,text=description).grid(row=index,column=0)
+                Label(edit_view,text=item_values[index],foreground='blue').grid(row=index,column=1)
+                Entry(edit_view).grid(row=index, column=2)
+                window_height += 35
+                if (description.lower().find('date') != -1):  #add calendar selection widget for date entry
+                    date_index = index
+                    date_entry = edit_view.grid_slaves(row=date_index,column=2)[0]
+                    date_entry.config(state="readonly")
+                    def cal_button():
+                        top = Toplevel(window)
+                        cal = Calendar(top, font="Arial 14", selectmode='day', locale='en_US',
+                                       cursor="hand2")
+                        cal.pack(fill="both", expand=True)
+                        def retrieve_date():
+                            date_entry.config(state=NORMAL)
+                            date_entry.delete(0,END)
+                            date_entry.insert(END,cal.selection_get().strftime('%Y-%m-%d'))
+                            date_entry.config(state="readonly")
+                            top.destroy()
+                        Button(top, text="ok", command = retrieve_date).pack() #insert date into date entry
+                        top.focus()
+                    image = Image.open("calendar.png")
+                    image = image.resize((22,22))
+                    photo = ImageTk.PhotoImage(image)
+                    cal_link = Button(edit_view,image=photo,command=cal_button)
+                    cal_link.image = photo
+                    cal_link.grid(row=index,column=3)
+            else:   #handle type case
+                Label(edit_view,text=description).grid(row=index,column=0)
+                Label(edit_view,text=item_values[index],foreground='blue').grid(row=index,column=1)
+                global add_var
+                add_var = StringVar(window)
+                add_var.set(type_options[sqlite_table][0])
+                options = OptionMenu(edit_view,add_var,*tuple(type_options[sqlite_table]))
+                options.config(width=14, background = "white")
+                options.grid(row=index, column=2)
+                window_height += 35
+        grid_size = edit_view.grid_size()[1] #used to place add/cancel buttons below all other buttons
+        Button(edit_view,text="Add Item",command = lambda: add_item(sqlite_table,edit_view)).grid(row=grid_size+1,column=1)
+        Button(edit_view,text="Cancel",command = lambda: edit_view.destroy()).grid(row=grid_size+2,column=1)
+        edit_view.title("Add to " + sqlite_table)
+        edit_view.focus()
+        x = (screen_width/2) - (500/2)
+        y = (screen_height/2) - (500/2)
+        edit_view.geometry("%dx%d+%d+%d" % (300,window_height,x,y))
+        edit_view.resizable(0,0)
+    else:
+        messagebox.showerror("Selection Error","Please select an inventory item.")
+        return
 
 
 #iterates through list of items and creates buttons based on 'class_name' object
@@ -161,7 +188,7 @@ def add_item_view(sqlite_table,gui_table):
     window_height = 0
     add_view = Toplevel(window)
     for index,description in enumerate(gui_table.columns): #add labels and entries based on database labels
-        if (description != 'type'):
+        if (description.lower() != 'type'):
             Label(add_view,text=description).grid(row=index,column=0)
             Entry(add_view).grid(row=index, column=1)
             window_height += 35
@@ -206,6 +233,37 @@ def add_item_view(sqlite_table,gui_table):
     y = (screen_height/2) - (500/2)
     add_view.geometry("%dx%d+%d+%d" % (300,window_height,x,y))
     add_view.resizable(0,0)
+
+def add_item(sqlite_table,toplevel_widg):
+    '''Work through toplevel to find entry widgets and extract these values to be
+    inserted into the given sqlite_table.
+
+    Parameters:
+    sqlite_table (str):The name of the sqlite table to add items to.
+    toplevel_widg (Tk toplevel object):The toplevel widget object to be worked through.
+    '''
+
+    additions = []
+    num_entries = 0
+    entries = [x for x in reversed(toplevel_widg.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == 'Menubutton')]
+    for entry in entries: #work through add_item entry widgets
+        if entry.winfo_class() == 'Entry':
+            additions.append(' '.join(word[0].upper() + word[1:] for word in entry.get().split())) #titlecase the string before appending
+            num_entries += 1
+        elif entry.winfo_class() == 'Menubutton':
+            additions.append(add_var.get())
+            num_entries += 1
+        else:
+            messagebox.showerror("Input Error","At least one input is blank, please try again.")
+            return
+    additions = tuple(additions)
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("INSERT INTO \'" + sqlite_table + "\' VALUES (" + ("?,"*(num_entries-1)) + "?)", additions)
+    conn.commit()
+    conn.close()
+    db_update()
+    toplevel_widg.destroy()
 
 class Sheet_Label(Label):
     '''Creates a clickable label with link to file in given file location.
@@ -266,7 +324,7 @@ fileRegex = re.compile(r'''
     ([a-zA-Z_0-9])''',re.VERBOSE)
 
 #option values for dropdown menus
-type_options = {'raw_materials': ['Bottles','Boxes','Caps','Capsules','Labels'], 'bottles': ['Vodka','Whiskey','Rum','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other']}
+type_options = {'raw_materials': ['Bottles','Boxes','Caps','Capsules','Labels'], 'bottles': ['Vodka','Whiskey','Rum','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other'], 'grain': ['Corn','Rye','Malted Barley','Malted Wheat','Oat']}
 
 #create root window, resize based on user's screen info
 window = Tk()
@@ -330,6 +388,7 @@ button_maker(View_Button,raw_materials_view_buttons,raw_materials_view_frame,'ra
 
 raw_materials_option_frame = LabelFrame(raw_materials_command_frame,height = height, text = "Options", bd = 5, relief = RIDGE, font = "bold")
 Logistics_Button(raw_materials_option_frame,"Add Item",'raw_materials',raw_materials_table,lambda: add_item_view('raw_materials',raw_materials_table))
+Logistics_Button(raw_materials_option_frame,"Edit Selection",'raw_materials',raw_materials_table,lambda: edit_selection_view('raw_materials',raw_materials_table))
 
 raw_materials_view_frame.pack()
 raw_materials_option_frame.pack()
@@ -386,6 +445,7 @@ grain_option_frame = LabelFrame(grain_command_frame,height=height,bd=5,relief=RI
 Logistics_Button(grain_option_frame,"Produce Mash",'grain',grain_table,None)
 Logistics_Button(grain_option_frame,"Edit Selection",'grain',grain_table,None)
 Logistics_Button(grain_option_frame,"Mash Production Sheet",'grain',grain_table,None)
+Logistics_Button(grain_option_frame,"Add Grain",'grain',grain_table,lambda: add_item_view('grain',grain_table))
 
 grain_option_frame.pack()
 grain_command_frame.pack(padx=10)
@@ -453,7 +513,7 @@ employee_transactions_command_frame.pack(padx=10)
 menubar = Menu(window)
 
 menu1 = Menu(menubar, tearoff=0)
-menu1.add_command(label="Bottles", command=lambda: view_widget(window,bottle_inventory_notebook,BOTTOM,'raw_materials','null','All',raw_materials_table))
+menu1.add_command(label="Raw Materials and Bottles", command=lambda: view_widget(window,bottle_inventory_notebook,BOTTOM,'raw_materials','null','All',raw_materials_table))
 menu1.add_command(label="Grain", command=lambda: view_widget(window,grain_inventory_notebook,BOTTOM,'grain','null','All',grain_table))
 menu1.add_command(label="Barrels", command=lambda: view_widget(window,barrel_inventory_notebook,BOTTOM,'barrels','null','All',barrel_table))
 menubar.add_cascade(label="Inventory", menu=menu1)
