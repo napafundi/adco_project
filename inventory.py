@@ -7,20 +7,21 @@ import webbrowser
 from PIL import Image, ImageTk
 import re
 from datetime import datetime
+import math
 
 def database():
     global conn,cur
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
-    cur.execute("CREATE TABLE IF NOT EXISTS 'raw_materials' (type TEXT,item TEXT, amount INTEGER, price REAL, total REAL)")
-    cur.execute("UPDATE 'raw_materials' SET 'total'= PRINTF('%s%.2f', '$', amount*price)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'raw_materials' (type TEXT,item TEXT, amount INTEGER, price REAL, total TEXT)")
+    cur.execute("UPDATE 'raw_materials' SET total= PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'production_log' (product TEXT, amount INTEGER)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'bottles' (type TEXT, product TEXT, amount INTEGER,price REAL, total REAL)")
-    cur.execute("UPDATE 'bottles' SET 'total'= PRINTF('%s%.2f', '$', amount*price)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'grain' ('order_number' TEXT, type TEXT, amount INTEGER,price REAL, total REAL)")
-    cur.execute("UPDATE 'grain' SET 'total'= PRINTF('%s%.2f', '$', amount*price)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'bottles' (type TEXT, product TEXT, amount INTEGER,price REAL, total TEXT)")
+    cur.execute("UPDATE 'bottles' SET total= PRINTF('%s%.2f', '$', amount*price)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'grain' ('order_number' TEXT, type TEXT, amount INTEGER,price REAL, total TEXT)")
+    cur.execute("UPDATE 'grain' SET total= PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'barrels' ('barrel_number' TEXT, type TEXT,'pg' INTEGER, 'date_filled' DATE, age TEXT,investor TEXT)")
-    cur.execute("UPDATE 'barrels' SET 'age'= PRINTF('%d years, %d months',(julianday('now') - julianday(date_filled)) / 365,(julianday('now') - julianday(date_filled)) % 365 / 30)")
+    cur.execute("UPDATE 'barrels' SET age= PRINTF('%d years, %d months',(julianday('now') - julianday(date_filled)) / 365,(julianday('now') - julianday(date_filled)) % 365 / 30)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'purchase_orders' (date DATE,product TEXT, amount INTEGER, price REAL, total REAL, destination TEXT, 'po_number' TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'employee_transactions' (date DATE,product TEXT, amount INTEGER, employee TEXT)")
     conn.commit()
@@ -29,10 +30,17 @@ def database():
 def db_update():
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
-    cur.execute("UPDATE 'raw_materials' SET 'total'= PRINTF('%s%g', '$', amount*price)")
-    cur.execute("UPDATE 'bottles' SET 'total'= PRINTF('%s%g', '$', amount*price)")
-    cur.execute("UPDATE 'grain' SET 'total'= PRINTF('%s%g', '$', amount*price)")
-    cur.execute("UPDATE 'barrels' SET 'age'= PRINTF('%d years, %d months',(julianday('now') - julianday(date_filled)) / 365,(julianday('now') - julianday(date_filled)) % 365 / 30)")
+    cur.execute("UPDATE 'raw_materials' SET total= PRINTF('%s%g', '$', amount*price)")
+    cur.execute("UPDATE 'bottles' SET total= PRINTF('%s%g', '$', amount*price)")
+    cur.execute("UPDATE 'grain' SET total= PRINTF('%s%g', '$', amount*price)")
+    cur.execute("UPDATE 'barrels' SET age= PRINTF('%d years, %d months',(julianday('now') - julianday(date_filled)) / 365,(julianday('now') - julianday(date_filled)) % 365 / 30)")
+    conn.commit()
+    conn.close()
+
+def raw_edit(sql_edit):
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("UPDATE 'raw_materials' SET type=?,item=?,amount=?,price=?,total=? WHERE type=? AND item=? AND amount=? AND price=? AND total=?", sql_edit)
     conn.commit()
     conn.close()
 
@@ -83,14 +91,19 @@ def view_products(sqlite_table,column,item,gui_table):
 def edit_selection_view(sqlite_table,gui_table):
     item_values = gui_table.item(gui_table.selection())['values']
     if item_values:
-        print(item_values)
         edit_view = Toplevel(window)
         window_height = 0
         for index,description in enumerate(gui_table.columns):
             if (description.lower() != 'type'):
                 Label(edit_view,text=description).grid(row=index,column=0)
                 Label(edit_view,text=item_values[index],foreground='blue').grid(row=index,column=1)
-                Entry(edit_view).grid(row=index, column=2)
+                if description.lower() == 'total':
+                    total_text = StringVar()
+                    total_entry = Entry(edit_view,textvariable=total_text)
+                    total_entry.config(state="readonly")
+                    total_entry.grid(row=index,column=2)
+                else:
+                    Entry(edit_view).grid(row=index, column=2)
                 window_height += 35
                 if (description.lower().find('date') != -1):  #add calendar selection widget for date entry
                     date_index = index
@@ -115,19 +128,43 @@ def edit_selection_view(sqlite_table,gui_table):
                     cal_link = Button(edit_view,image=photo,command=cal_button)
                     cal_link.image = photo
                     cal_link.grid(row=index,column=3)
+                elif (description.lower().find('total') != -1): #configure total entry to auto-update
+                        entries = [x for x in reversed(edit_view.grid_slaves(column=0)) if (x.winfo_class() == 'Label' or x.winfo_class() == 'Menubutton')]
+                        print(entries)
+                        for entry in entries:
+                            if entry.cget("text").lower() == "amount":
+                                amount_row = entry.grid_info()['row']
+                                amount_entry = edit_view.grid_slaves(row=amount_row,column=2)[0]
+                            if entry.cget("text").lower() == "price":
+                                price_row = entry.grid_info()['row']
+                                price_entry = edit_view.grid_slaves(row=price_row,column=2)[0]
+                        def total_after():
+                            price_num = price_entry.get()
+                            amount_num = amount_entry.get()
+                            def total_update(amount,price):
+                                try:
+                                    total_string = "$%.2f" % (float(amount_num)*float(price_num))
+                                    total_text.set(total_string)
+                                    return
+                                except:
+                                    total_string = "$"
+                                    total_text.set(total_string)
+                            total_update(amount_num,price_num)
+                            edit_view.after(150,total_after)
+                        total_after()
             else:   #handle type case
                 Label(edit_view,text=description).grid(row=index,column=0)
                 Label(edit_view,text=item_values[index],foreground='blue').grid(row=index,column=1)
-                global add_var
-                add_var = StringVar(window)
-                add_var.set(type_options[sqlite_table][0])
-                options = OptionMenu(edit_view,add_var,*tuple(type_options[sqlite_table]))
+                global edit_var
+                edit_var = StringVar(window)
+                edit_var.set(type_options[sqlite_table][0])
+                options = OptionMenu(edit_view,edit_var,*tuple(type_options[sqlite_table]))
                 options.config(width=14, background = "white")
                 options.grid(row=index, column=2)
                 window_height += 35
         grid_size = edit_view.grid_size()[1] #used to place add/cancel buttons below all other buttons
-        Button(edit_view,text="Add Item",command = lambda: add_item(sqlite_table,edit_view)).grid(row=grid_size+1,column=1)
-        Button(edit_view,text="Cancel",command = lambda: edit_view.destroy()).grid(row=grid_size+2,column=1)
+        Button(edit_view,text="Edit Item",command = lambda: edit_selection(sqlite_table,edit_view)).grid(row=grid_size+1,column=2,sticky=N+E+S+W)
+        Button(edit_view,text="Cancel",command = lambda: edit_view.destroy()).grid(row=grid_size+2,column=2,sticky=N+E+S+W)
         edit_view.title("Add to " + sqlite_table)
         edit_view.focus()
         x = (screen_width/2) - (500/2)
@@ -138,12 +175,27 @@ def edit_selection_view(sqlite_table,gui_table):
         messagebox.showerror("Selection Error","Please select an inventory item.")
         return
 
+def edit_selection(sqlite_table,toplevel_widg):
+    changes = []
+    edit_entries = [x for x in reversed(toplevel_widg.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == 'Menubutton')]
+    for entry in edit_entries:
+        if entry.winfo_class() == 'Entry' and entry.get():
+            changes.append(' '.join(word[0].upper() + word[1:] for word in entry.get().split())) #titlecase the string before appending
+        elif entry.winfo_class() == 'Menubutton':
+            changes.append(edit_var.get())
+        else:
+            messagebox.showerror("Input Error","At least one input is blank, please try again.",parent=toplevel_widg)
+            return
+    current_values = [x.cget('text') for x in reversed(toplevel_widg.grid_slaves(column=1)) if (x.winfo_class() == 'Label')]
+    changes = tuple(changes + current_values)
+    raw_edit(changes)
+    db_update()
+    toplevel_widg.destroy()
 
 #iterates through list of items and creates buttons based on 'class_name' object
 def button_maker(class_name,list,master_widget,sqlite_table,gui_table):
     for item in list:
         class_name(master=master_widget,text=item,sqlite_table=sqlite_table,gui_table=gui_table).pack(anchor='center')
-
 
 #create production sheets toplevel window upon clicking the menu option,
 #populate with files within production_sheets folder
@@ -190,7 +242,18 @@ def add_item_view(sqlite_table,gui_table):
     for index,description in enumerate(gui_table.columns): #add labels and entries based on database labels
         if (description.lower() != 'type'):
             Label(add_view,text=description).grid(row=index,column=0)
-            Entry(add_view).grid(row=index, column=1)
+            if description.lower() == 'total':
+                total_text = StringVar()
+                total_entry = Entry(add_view,textvariable=total_text)
+                total_entry.config(state="readonly")
+                total_entry.grid(row=index,column=1)
+            elif (description.lower().find('age') != -1):
+                age_text = StringVar()
+                age_entry = Entry(add_view,textvariable=age_text)
+                age_entry.config(state="readonly")
+                age_entry.grid(row=index,column=1)
+            else:
+                Entry(add_view).grid(row=index, column=1)
             window_height += 35
             if (description.lower().find('date') != -1):  #add calendar selection widget for date entry
                 date_index = index
@@ -215,18 +278,53 @@ def add_item_view(sqlite_table,gui_table):
                 cal_link = Button(add_view,image=photo,command=cal_button)
                 cal_link.image = photo
                 cal_link.grid(row=index,column=2)
+            elif ((description.lower().find('total') != -1) or (description.lower().find('age') != -1)): #configure total entry to auto-update
+                    entries = [x for x in reversed(add_view.grid_slaves(column=0)) if (x.winfo_class() == 'Label' or x.winfo_class() == 'Menubutton')]
+                    for entry in entries:
+                        if entry.cget("text").lower() == "amount":
+                            amount_row = entry.grid_info()['row']
+                            amount_entry = add_view.grid_slaves(row=amount_row,column=1)[0]
+                        if entry.cget("text").lower() == "price":
+                            price_row = entry.grid_info()['row']
+                            price_entry = add_view.grid_slaves(row=price_row,column=1)[0]
+                        if (entry.cget("text").find("date") != -1):
+                            date_row = entry.grid_info()['row']
+                            date_entry = add_view.grid_slaves(row=date_row,column=1)[0]
+                    def total_after():
+                        def total_update():
+                            if 'total_text' in locals():
+                                try:
+                                    price_num = price_entry.get()
+                                    amount_num = amount_entry.get()
+                                    total_string = "$%.2f" % (float(amount_num)*float(price_num))
+                                    total_text.set(total_string)
+                                    return
+                                except:
+                                    total_string = "$"
+                                    total_text.set(total_string)
+                            if 'age_text' in locals():
+                                try:
+                                    date_value = datetime.strptime(date_entry.get(),'%Y-%m-%d')
+                                    date_diff = datetime.now() - date_value
+                                    age_value = "%d years, %d months" % (math.floor(date_diff.days/365.2425), (date_diff.days%365.2425)/30)
+                                    age_text.set(age_value)
+                                except:
+                                    age_text.set("0 years, 0 months")
+                        total_update()
+                        add_view.after(150,total_after)
+                    total_after()
         else:   #handle type case
             Label(add_view,text=description).grid(row=index,column=0)
-            global add_var
-            add_var = StringVar(window)
-            add_var.set(type_options[sqlite_table][0])
-            options = OptionMenu(add_view,add_var,*tuple(type_options[sqlite_table]))
+            global type_var
+            type_var = StringVar(window)
+            type_var.set(type_options[sqlite_table][0])
+            options = OptionMenu(add_view,type_var,*tuple(type_options[sqlite_table]))
             options.config(width=14, background = "white")
             options.grid(row=index, column=1)
             window_height += 35
     grid_size = add_view.grid_size()[1] #used to place add/cancel buttons below all other buttons
-    Button(add_view,text="Add Item",command = lambda: add_item(sqlite_table,add_view)).grid(row=grid_size+1,column=1)
-    Button(add_view,text="Cancel",command = lambda: add_view.destroy()).grid(row=grid_size+2,column=1)
+    Button(add_view,text="Add Item",command = lambda: add_item(sqlite_table,add_view)).grid(row=grid_size+1,column=1,sticky=N+E+S+W)
+    Button(add_view,text="Cancel",command = lambda: add_view.destroy()).grid(row=grid_size+2,column=1,sticky=N+E+S+W)
     add_view.title("Add to " + sqlite_table)
     add_view.focus()
     x = (screen_width/2) - (500/2)
@@ -247,16 +345,17 @@ def add_item(sqlite_table,toplevel_widg):
     num_entries = 0
     entries = [x for x in reversed(toplevel_widg.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == 'Menubutton')]
     for entry in entries: #work through add_item entry widgets
-        if entry.winfo_class() == 'Entry':
+        if entry.winfo_class() == 'Entry' and entry.get():
             additions.append(' '.join(word[0].upper() + word[1:] for word in entry.get().split())) #titlecase the string before appending
             num_entries += 1
         elif entry.winfo_class() == 'Menubutton':
-            additions.append(add_var.get())
+            additions.append(type_var.get())
             num_entries += 1
         else:
-            messagebox.showerror("Input Error","At least one input is blank, please try again.")
+            messagebox.showerror("Input Error","At least one input is blank, please try again.",parent=toplevel_widg)
             return
     additions = tuple(additions)
+    print(additions)
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("INSERT INTO \'" + sqlite_table + "\' VALUES (" + ("?,"*(num_entries-1)) + "?)", additions)
@@ -264,6 +363,17 @@ def add_item(sqlite_table,toplevel_widg):
     conn.close()
     db_update()
     toplevel_widg.destroy()
+
+def treeview_sort_column(tv, col, reverse):
+    l = [(tv.set(k, col), k) for k in tv.get_children('')]
+    l.sort(reverse=reverse)
+
+    # rearrange items in sorted positions
+    for index, (val, k) in enumerate(l):
+        tv.move(k, '', index)
+
+    # reverse sort next time
+    tv.heading(col, text=col, command=lambda c=col: treeview_sort_column(tv, c, not reverse))
 
 class Sheet_Label(Label):
     '''Creates a clickable label with link to file in given file location.
@@ -308,13 +418,14 @@ class Logistics_Button(Button):
         self.pack(anchor='center')
 
 class Treeview_Table(ttk.Treeview):
+
     def __init__(self,master,columns):
         ttk.Treeview.__init__(self,master,columns=columns,show='headings',height=600,style="Custom.Treeview")
         self.width=int(table_width/(len(columns)))
         self.columns = columns
         for i in range(len(columns)):
             self.column(self.columns[i],anchor='center',width=self.width)
-            self.heading(str('#' + str((i+1))),text=self.columns[i])
+            self.heading(str('#' + str((i+1))),text=self.columns[i],command = lambda col=self.columns[i]: treeview_sort_column(self,col, False))
         self.pack(side=RIGHT,fill=BOTH,expand=1)
 
 #used to search for the string literal within a filename that occurs before the file extension (Ex. '.txt')
