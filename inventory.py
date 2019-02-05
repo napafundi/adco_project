@@ -130,7 +130,6 @@ def edit_selection_view(sqlite_table,gui_table):
                     cal_link.grid(row=index,column=3)
                 elif (description.lower().find('total') != -1): #configure total entry to auto-update
                         entries = [x for x in reversed(edit_view.grid_slaves(column=0)) if (x.winfo_class() == 'Label' or x.winfo_class() == 'Menubutton')]
-                        print(entries)
                         for entry in entries:
                             if entry.cget("text").lower() == "amount":
                                 amount_row = entry.grid_info()['row']
@@ -141,7 +140,7 @@ def edit_selection_view(sqlite_table,gui_table):
                         def total_after():
                             price_num = price_entry.get()
                             amount_num = amount_entry.get()
-                            def total_update(amount,price):
+                            def total_update():
                                 try:
                                     total_string = "$%.2f" % (float(amount_num)*float(price_num))
                                     total_text.set(total_string)
@@ -149,7 +148,7 @@ def edit_selection_view(sqlite_table,gui_table):
                                 except:
                                     total_string = "$"
                                     total_text.set(total_string)
-                            total_update(amount_num,price_num)
+                            total_update()
                             edit_view.after(150,total_after)
                         total_after()
             else:   #handle type case
@@ -165,7 +164,7 @@ def edit_selection_view(sqlite_table,gui_table):
         grid_size = edit_view.grid_size()[1] #used to place add/cancel buttons below all other buttons
         Button(edit_view,text="Edit Item",command = lambda: edit_selection(sqlite_table,edit_view)).grid(row=grid_size+1,column=2,sticky=N+E+S+W)
         Button(edit_view,text="Cancel",command = lambda: edit_view.destroy()).grid(row=grid_size+2,column=2,sticky=N+E+S+W)
-        edit_view.title("Add to " + sqlite_table)
+        edit_view.title("Edit " + sqlite_table.replace("_"," "))
         edit_view.focus()
         x = (screen_width/2) - (500/2)
         y = (screen_height/2) - (500/2)
@@ -325,7 +324,7 @@ def add_item_view(sqlite_table,gui_table):
     grid_size = add_view.grid_size()[1] #used to place add/cancel buttons below all other buttons
     Button(add_view,text="Add Item",command = lambda: add_item(sqlite_table,add_view)).grid(row=grid_size+1,column=1,sticky=N+E+S+W)
     Button(add_view,text="Cancel",command = lambda: add_view.destroy()).grid(row=grid_size+2,column=1,sticky=N+E+S+W)
-    add_view.title("Add to " + sqlite_table)
+    add_view.title("Add to " + sqlite_table.replace("_"," "))
     add_view.focus()
     x = (screen_width/2) - (500/2)
     y = (screen_height/2) - (500/2)
@@ -355,7 +354,6 @@ def add_item(sqlite_table,toplevel_widg):
             messagebox.showerror("Input Error","At least one input is blank, please try again.",parent=toplevel_widg)
             return
     additions = tuple(additions)
-    print(additions)
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("INSERT INTO \'" + sqlite_table + "\' VALUES (" + ("?,"*(num_entries-1)) + "?)", additions)
@@ -371,6 +369,10 @@ def treeview_sort_column(tv, col, reverse):
     # rearrange items in sorted positions
     for index, (val, k) in enumerate(l):
         tv.move(k, '', index)
+        tv.item(k,tags=())
+        if index % 2 == 0:
+            tv.item(k,tags=('even',))
+    tv.tag_configure('even',background="#E8E8E8")
 
     # reverse sort next time
     tv.heading(col, text=col, command=lambda c=col: treeview_sort_column(tv, c, not reverse))
