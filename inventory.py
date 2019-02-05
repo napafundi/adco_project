@@ -88,109 +88,6 @@ def view_products(sqlite_table,column,item,gui_table):
         gui_table.insert("",END,values = row,tags=(tag,))
     gui_table.tag_configure('even', background='#E8E8E8')
 
-def edit_selection_view(sqlite_table,gui_table):
-    item_values = gui_table.item(gui_table.selection())['values']
-    if item_values:
-        edit_view = Toplevel(window)
-        window_height = 0
-        for index,description in enumerate(gui_table.columns):
-            if (description.lower() != 'type'):
-                Label(edit_view,text=description).grid(row=index,column=0)
-                Label(edit_view,text=item_values[index],foreground='blue').grid(row=index,column=1)
-                if description.lower() == 'total':
-                    total_text = StringVar()
-                    total_entry = Entry(edit_view,textvariable=total_text)
-                    total_entry.config(state="readonly")
-                    total_entry.grid(row=index,column=2)
-                else:
-                    Entry(edit_view).grid(row=index, column=2)
-                window_height += 35
-                if (description.lower().find('date') != -1):  #add calendar selection widget for date entry
-                    date_index = index
-                    date_entry = edit_view.grid_slaves(row=date_index,column=2)[0]
-                    date_entry.config(state="readonly")
-                    def cal_button():
-                        top = Toplevel(window)
-                        cal = Calendar(top, font="Arial 14", selectmode='day', locale='en_US',
-                                       cursor="hand2")
-                        cal.pack(fill="both", expand=True)
-                        def retrieve_date():
-                            date_entry.config(state=NORMAL)
-                            date_entry.delete(0,END)
-                            date_entry.insert(END,cal.selection_get().strftime('%Y-%m-%d'))
-                            date_entry.config(state="readonly")
-                            top.destroy()
-                        Button(top, text="ok", command = retrieve_date).pack() #insert date into date entry
-                        top.focus()
-                    image = Image.open("calendar.png")
-                    image = image.resize((22,22))
-                    photo = ImageTk.PhotoImage(image)
-                    cal_link = Button(edit_view,image=photo,command=cal_button)
-                    cal_link.image = photo
-                    cal_link.grid(row=index,column=3)
-                elif (description.lower().find('total') != -1): #configure total entry to auto-update
-                        entries = [x for x in reversed(edit_view.grid_slaves(column=0)) if (x.winfo_class() == 'Label' or x.winfo_class() == 'Menubutton')]
-                        for entry in entries:
-                            if entry.cget("text").lower() == "amount":
-                                amount_row = entry.grid_info()['row']
-                                amount_entry = edit_view.grid_slaves(row=amount_row,column=2)[0]
-                            if entry.cget("text").lower() == "price":
-                                price_row = entry.grid_info()['row']
-                                price_entry = edit_view.grid_slaves(row=price_row,column=2)[0]
-                        def total_after():
-                            price_num = price_entry.get()
-                            amount_num = amount_entry.get()
-                            def total_update():
-                                try:
-                                    total_string = "$%.2f" % (float(amount_num)*float(price_num))
-                                    total_text.set(total_string)
-                                    return
-                                except:
-                                    total_string = "$"
-                                    total_text.set(total_string)
-                            total_update()
-                            edit_view.after(150,total_after)
-                        total_after()
-            else:   #handle type case
-                Label(edit_view,text=description).grid(row=index,column=0)
-                Label(edit_view,text=item_values[index],foreground='blue').grid(row=index,column=1)
-                global edit_var
-                edit_var = StringVar(window)
-                edit_var.set(type_options[sqlite_table][0])
-                options = OptionMenu(edit_view,edit_var,*tuple(type_options[sqlite_table]))
-                options.config(width=14, background = "white")
-                options.grid(row=index, column=2)
-                window_height += 35
-        grid_size = edit_view.grid_size()[1] #used to place add/cancel buttons below all other buttons
-        Button(edit_view,text="Edit Item",command = lambda: edit_selection(sqlite_table,edit_view)).grid(row=grid_size+1,column=2,sticky=N+E+S+W)
-        Button(edit_view,text="Cancel",command = lambda: edit_view.destroy()).grid(row=grid_size+2,column=2,sticky=N+E+S+W)
-        edit_view.title("Edit " + sqlite_table.replace("_"," "))
-        edit_view.focus()
-        x = (screen_width/2) - (500/2)
-        y = (screen_height/2) - (500/2)
-        edit_view.geometry("%dx%d+%d+%d" % (300,window_height,x,y))
-        edit_view.resizable(0,0)
-    else:
-        messagebox.showerror("Selection Error","Please select an inventory item.")
-        return
-
-def edit_selection(sqlite_table,toplevel_widg):
-    changes = []
-    edit_entries = [x for x in reversed(toplevel_widg.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == 'Menubutton')]
-    for entry in edit_entries:
-        if entry.winfo_class() == 'Entry' and entry.get():
-            changes.append(' '.join(word[0].upper() + word[1:] for word in entry.get().split())) #titlecase the string before appending
-        elif entry.winfo_class() == 'Menubutton':
-            changes.append(edit_var.get())
-        else:
-            messagebox.showerror("Input Error","At least one input is blank, please try again.",parent=toplevel_widg)
-            return
-    current_values = [x.cget('text') for x in reversed(toplevel_widg.grid_slaves(column=1)) if (x.winfo_class() == 'Label')]
-    changes = tuple(changes + current_values)
-    raw_edit(changes)
-    db_update()
-    toplevel_widg.destroy()
-
 #iterates through list of items and creates buttons based on 'class_name' object
 def button_maker(class_name,list,master_widget,sqlite_table,gui_table):
     for item in list:
@@ -235,132 +132,179 @@ def labels_view():
     labels_window.resizable(0,0)
 
 #creates toplevel populated by inputs for items in table
-def add_item_view(sqlite_table,gui_table):
-    window_height = 0
-    add_view = Toplevel(window)
-    for index,description in enumerate(gui_table.columns): #add labels and entries based on database labels
-        if (description.lower() != 'type'):
-            Label(add_view,text=description).grid(row=index,column=0)
-            if description.lower() == 'total':
-                total_text = StringVar()
-                total_entry = Entry(add_view,textvariable=total_text)
-                total_entry.config(state="readonly")
-                total_entry.grid(row=index,column=1)
-            elif (description.lower().find('age') != -1):
-                age_text = StringVar()
-                age_entry = Entry(add_view,textvariable=age_text)
-                age_entry.config(state="readonly")
-                age_entry.grid(row=index,column=1)
+class Add_View(Toplevel):
+
+    def add_item(self,sqlite_table):
+        '''Work through toplevel to find entry widgets and extract these values to be
+        inserted into the given sqlite_table.
+
+        Parameters:
+        sqlite_table (str):The name of the sqlite table to add items to.
+        '''
+
+        self.additions = []
+        self.num_entries = 0
+        self.entries = [x for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == 'Menubutton')]
+        for entry in self.entries: #work through add_item entry widgets
+            if entry.winfo_class() == 'Entry' and entry.get():
+                self.additions.append(' '.join(word[0].upper() + word[1:] for word in entry.get().split())) #titlecase the string before appending
+                self.num_entries += 1
+            elif entry.winfo_class() == 'Menubutton':
+                self.additions.append(self.type_var.get())
+                self.num_entries += 1
             else:
-                Entry(add_view).grid(row=index, column=1)
-            window_height += 35
-            if (description.lower().find('date') != -1):  #add calendar selection widget for date entry
-                date_index = index
-                date_entry = add_view.grid_slaves(row=date_index,column=1)[0]
-                date_entry.config(state="readonly")
-                def cal_button():
-                    top = Toplevel(window)
-                    cal = Calendar(top, font="Arial 14", selectmode='day', locale='en_US',
-                                   cursor="hand2")
-                    cal.pack(fill="both", expand=True)
-                    def retrieve_date():
-                        date_entry.config(state=NORMAL)
-                        date_entry.delete(0,END)
-                        date_entry.insert(END,cal.selection_get().strftime('%Y-%m-%d'))
-                        date_entry.config(state="readonly")
-                        top.destroy()
-                    Button(top, text="ok", command = retrieve_date).pack() #insert date into date entry
-                    top.focus()
-                image = Image.open("calendar.png")
-                image = image.resize((22,22))
-                photo = ImageTk.PhotoImage(image)
-                cal_link = Button(add_view,image=photo,command=cal_button)
-                cal_link.image = photo
-                cal_link.grid(row=index,column=2)
-            elif ((description.lower().find('total') != -1) or (description.lower().find('age') != -1)): #configure total entry to auto-update
-                    entries = [x for x in reversed(add_view.grid_slaves(column=0)) if (x.winfo_class() == 'Label' or x.winfo_class() == 'Menubutton')]
-                    for entry in entries:
+                messagebox.showerror("Input Error","At least one input is blank, please try again.",parent=self)
+                return
+        self.additions = tuple(self.additions)
+        self.conn = sqlite3.Connection("inventory.db")
+        self.cur = self.conn.cursor()
+        self.cur.execute("INSERT INTO \'" + self.sqlite_table + "\' VALUES (" + ("?,"*(self.num_entries-1)) + "?)", self.additions)
+        self.conn.commit()
+        self.conn.close()
+        db_update()
+        view_products(self.sqlite_table,'null','All',self.gui_table)
+        self.destroy()
+
+    def __init__(self,master,sqlite_table,gui_table,entry_col):
+        self.window_height = 0
+        self.sqlite_table = sqlite_table
+        self.gui_table = gui_table
+        self.entry_col = entry_col
+        Toplevel.__init__(self,master=master)
+        for index,description in enumerate(self.gui_table.columns):
+            if (description.lower() != 'type'):
+                Label(self,text=description).grid(row=index,column=0)
+                if description.lower() == 'total':
+                    self.total_text = StringVar()
+                    self.total_entry = Entry(self,textvariable=self.total_text)
+                    self.total_entry.config(state="readonly")
+                    self.total_entry.grid(row=index,column=self.entry_col)
+                elif (description.lower().find('age') != -1):
+                    self.age_text = StringVar()
+                    self.age_entry = Entry(self, textvariable=self.age_text)
+                    self.age_entry.config(state="readonly")
+                    self.age_entry.grid(row=index,column=self.entry_col)
+                else:
+                    Entry(self).grid(row=index,column=self.entry_col)
+                self.window_height += 35
+                if (description.lower().find('date') != -1):
+                    self.date_index = index
+                    self.date_entry = self.grid_slaves(row=self.date_index,column=self.entry_col)[0]
+                    self.date_entry.config(state="readonly")
+                    def cal_button():
+                        self.top = Toplevel(window)
+                        self.cal = Calendar(top, font="Arial 14", selectmode='day', locale='en_US',
+                                       cursor="hand2")
+                        self.cal.pack(fill="both", expand=True)
+                        def retrieve_date():
+                            self.date_entry.config(state=NORMAL)
+                            self.date_entry.delete(0,END)
+                            self.date_entry.insert(END,self.cal.selection_get().strftime("%Y-%m-%d"))
+                            self.date_entry.config(state="readonly")
+                            self.top.destroy()
+                        Button(self.top, text="ok", command = retrieve_date).pack()
+                        self.top.focus()
+                    self.image = Image.open("calendar.png")
+                    self.image.resize((22,22))
+                    self.photo = ImageTk.PhotoImage(self.image)
+                    self.cal_link = Button(self, image=self.photo, command = cal_button)
+                    self.cal_link.image = self.photo
+                    self.cal_link.grid(row=index,column=self.entry_col+1)
+                elif ((description.lower().find('total') != -1) or (description.lower().find('age') != -1)):
+                    self.labels = [x for x in reversed(self.grid_slaves(column=0)) if (x.winfo_class() == 'Label')]
+                    for entry in self.labels:
                         if entry.cget("text").lower() == "amount":
-                            amount_row = entry.grid_info()['row']
-                            amount_entry = add_view.grid_slaves(row=amount_row,column=1)[0]
+                            self.amount_row = entry.grid_info()['row']
+                            self.amount_entry = self.grid_slaves(row=self.amount_row,column=self.entry_col)[0]
                         if entry.cget("text").lower() == "price":
-                            price_row = entry.grid_info()['row']
-                            price_entry = add_view.grid_slaves(row=price_row,column=1)[0]
-                        if (entry.cget("text").find("date") != -1):
-                            date_row = entry.grid_info()['row']
-                            date_entry = add_view.grid_slaves(row=date_row,column=1)[0]
+                            self.price_row = entry.grid_info()['row']
+                            self.price_entry = self.grid_slaves(row=self.price_row,column=self.entry_col)[0]
+                        if entry.cget("text").find("date") != -1:
+                            self.date_row = entry.grid_info()['row']
+                            self.date_entry = self.grid_slaves(row=self.date_row,column=self.entry_col)[0]
                     def total_after():
                         def total_update():
-                            if 'total_text' in locals():
-                                try:
-                                    price_num = price_entry.get()
-                                    amount_num = amount_entry.get()
-                                    total_string = "$%.2f" % (float(amount_num)*float(price_num))
-                                    total_text.set(total_string)
-                                    return
-                                except:
-                                    total_string = "$"
-                                    total_text.set(total_string)
-                            if 'age_text' in locals():
-                                try:
-                                    date_value = datetime.strptime(date_entry.get(),'%Y-%m-%d')
-                                    date_diff = datetime.now() - date_value
-                                    age_value = "%d years, %d months" % (math.floor(date_diff.days/365.2425), (date_diff.days%365.2425)/30)
-                                    age_text.set(age_value)
-                                except:
-                                    age_text.set("0 years, 0 months")
+                            try:
+                                self.price_num = self.price_entry.get()
+                                self.amount_num = self.amount_entry.get()
+                                self.total_string = "$%.2f" % (float(self.amount_num)*float(self.price_num))
+                                self.total_text.set(self.total_string)
+                                return
+                            except ValueError:
+                                self.total_text.set("$")
+                            except AttributeError:
+                                pass
+                            try:
+                                self.date_value = datetime.strptime(self.date_entry.get(),'%Y-%m-%d')
+                                self.date_diff = datetime.now() - self.date_value
+                                self.barrel_age = "%d years, %d months" % (math.floor(self.date_diff.days/365.2425), (self.date_diff.days%365.2425)/30)
+                                self.age_text.set(self.barrel_age)
+                            except AttributeError:
+                                pass
                         total_update()
-                        add_view.after(150,total_after)
+                        self.after(150,total_after)
                     total_after()
-        else:   #handle type case
-            Label(add_view,text=description).grid(row=index,column=0)
-            global type_var
-            type_var = StringVar(window)
-            type_var.set(type_options[sqlite_table][0])
-            options = OptionMenu(add_view,type_var,*tuple(type_options[sqlite_table]))
-            options.config(width=14, background = "white")
-            options.grid(row=index, column=1)
-            window_height += 35
-    grid_size = add_view.grid_size()[1] #used to place add/cancel buttons below all other buttons
-    Button(add_view,text="Add Item",command = lambda: add_item(sqlite_table,add_view)).grid(row=grid_size+1,column=1,sticky=N+E+S+W)
-    Button(add_view,text="Cancel",command = lambda: add_view.destroy()).grid(row=grid_size+2,column=1,sticky=N+E+S+W)
-    add_view.title("Add to " + sqlite_table.replace("_"," "))
-    add_view.focus()
-    x = (screen_width/2) - (500/2)
-    y = (screen_height/2) - (500/2)
-    add_view.geometry("%dx%d+%d+%d" % (300,window_height,x,y))
-    add_view.resizable(0,0)
+            else:   #handle type case
+                Label(self,text=description).grid(row=index,column=0)
+                self.type_var = StringVar(master)
+                self.type_var.set(type_options[sqlite_table][0])
+                self.options = OptionMenu(self,self.type_var,*tuple(type_options[sqlite_table]))
+                self.options.config(width=14, background="white")
+                self.options.grid(row=index,column=self.entry_col)
+                self.window_height += 35
+        self.grid_size = self.grid_size()[1]
+        Button(self,text="Add Item",command = lambda : self.add_item(self.sqlite_table)).grid(row=self.grid_size+1,column=self.entry_col,sticky=N+E+S+W)
+        Button(self,text="Cancel",command = lambda : self.destroy()).grid(row=self.grid_size+2,column=self.entry_col,sticky=N+E+S+W)
+        self.title("Add to " + self.sqlite_table.replace("_"," ").title())
+        self.focus()
+        self.x = (screen_width/2) - (500/2)
+        self.y = (screen_height/2) - (500/2)
+        self.geometry(("%dx%d+%d+%d") % (300,self.window_height,self.x,self.y))
+        self.resizable(0,0)
 
-def add_item(sqlite_table,toplevel_widg):
-    '''Work through toplevel to find entry widgets and extract these values to be
-    inserted into the given sqlite_table.
+class Edit_View(Add_View):
 
-    Parameters:
-    sqlite_table (str):The name of the sqlite table to add items to.
-    toplevel_widg (Tk toplevel object):The toplevel widget object to be worked through.
-    '''
+    def edit_selection(self):
+        self.changes = []
+        self.edit_entries = [x for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == 'Menubutton')]
+        for entry in self.edit_entries:
+            if entry.winfo_class() == 'Entry' and entry.get():
+                self.changes.append(' '.join(word[0].upper() + word[1:] for word in entry.get().split())) #titlecase the string before appending
+            elif entry.winfo_class() == 'Menubutton':
+                self.changes.append(self.type_var.get())
+            else:
+                messagebox.showerror("Input Error","At least one input is blank, please try again.",parent=toplevel_widg)
+                return
+        self.current_values = [x.cget('text') for x in reversed(self.grid_slaves(column=1)) if (x.winfo_class() == 'Label')]
+        self.changes = tuple(self.changes + self.current_values)
+        raw_edit(self.changes)
+        db_update()
+        view_products(self.sqlite_table,'null','All',self.gui_table)
+        self.destroy()
 
-    additions = []
-    num_entries = 0
-    entries = [x for x in reversed(toplevel_widg.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == 'Menubutton')]
-    for entry in entries: #work through add_item entry widgets
-        if entry.winfo_class() == 'Entry' and entry.get():
-            additions.append(' '.join(word[0].upper() + word[1:] for word in entry.get().split())) #titlecase the string before appending
-            num_entries += 1
-        elif entry.winfo_class() == 'Menubutton':
-            additions.append(type_var.get())
-            num_entries += 1
-        else:
-            messagebox.showerror("Input Error","At least one input is blank, please try again.",parent=toplevel_widg)
-            return
-    additions = tuple(additions)
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("INSERT INTO \'" + sqlite_table + "\' VALUES (" + ("?,"*(num_entries-1)) + "?)", additions)
-    conn.commit()
-    conn.close()
-    db_update()
-    toplevel_widg.destroy()
+    def __init__(self,master,sqlite_table,gui_table,entry_col):
+        self.master = master
+        self.sqlite_table = sqlite_table
+        self.gui_table = gui_table
+        self.entry_col = entry_col
+        self.item_values = self.gui_table.item(self.gui_table.selection())['values']
+        if self.item_values:
+            Add_View.__init__(self,master,sqlite_table,gui_table,entry_col)
+            self.title("Edit " + self.sqlite_table.replace("_"," ").title())
+            for index,description in enumerate(self.gui_table.columns):
+                if (description.lower() != 'type'):
+                    Label(self,text=self.item_values[index],foreground='blue').grid(row=index,column=1)
+                else:
+                    Label(self,text=self.item_values[index],foreground='blue').grid(row=index,column=1)
+            Button(self,text="Edit Item",command = lambda : self.edit_selection()).grid(row=self.grid_size+1,column=self.entry_col,sticky=N+E+S+W)
+            Button(self,text="Cancel",command = lambda : self.destroy()).grid(row=self.grid_size+2,column=self.entry_col,sticky=N+E+S+W)
+
+def edit_check(gui_table):
+    item_values = gui_table.item(gui_table.selection())['values']
+    if item_values:
+        Edit_View(window,'raw_materials',raw_materials_table,2)
+    else:
+        messagebox.showerror("Selection Error","Please select an inventory item.")
 
 def treeview_sort_column(tv, col, reverse):
     l = [(tv.set(k, col), k) for k in tv.get_children('')]
@@ -376,6 +320,13 @@ def treeview_sort_column(tv, col, reverse):
 
     # reverse sort next time
     tv.heading(col, text=col, command=lambda c=col: treeview_sort_column(tv, c, not reverse))
+
+def total_update(sqlite_table):
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("SELECT SUM(amount*price) FROM " + sqlite_table)
+    total = list(cur)[0][0]
+    conn.close()
 
 class Sheet_Label(Label):
     '''Creates a clickable label with link to file in given file location.
@@ -429,6 +380,17 @@ class Treeview_Table(ttk.Treeview):
             self.column(self.columns[i],anchor='center',width=self.width)
             self.heading(str('#' + str((i+1))),text=self.columns[i],command = lambda col=self.columns[i]: treeview_sort_column(self,col, False))
         self.pack(side=RIGHT,fill=BOTH,expand=1)
+
+class Total_Label(LabelFrame):
+
+    def __init__(self,sqlite_table,master):
+        self.sqlite_table = sqlite_table
+        self.master = master
+        LabelFrame.__init__(self,master,height=height,width=command_width, text = "Inventory Value", bd = 5, relief = RIDGE, font = "bold")
+        self.total_update()
+        self.text = "{0:,.2f}".format(self.total)
+        Label(self,text="$%s" % (self.text),bd=10, font="Arial 15",fg="dark slate grey").pack(fill=BOTH)
+        self.pack(side=BOTTOM,fill=X)
 
 #used to search for the string literal within a filename that occurs before the file extension (Ex. '.txt')
 fileRegex = re.compile(r'''
@@ -500,8 +462,10 @@ raw_materials_view_buttons = ["Bottles","Boxes","Caps","Capsules","Labels","All"
 button_maker(View_Button,raw_materials_view_buttons,raw_materials_view_frame,'raw_materials',raw_materials_table)
 
 raw_materials_option_frame = LabelFrame(raw_materials_command_frame,height = height, text = "Options", bd = 5, relief = RIDGE, font = "bold")
-Logistics_Button(raw_materials_option_frame,"Add Item",'raw_materials',raw_materials_table,lambda: add_item_view('raw_materials',raw_materials_table))
-Logistics_Button(raw_materials_option_frame,"Edit Selection",'raw_materials',raw_materials_table,lambda: edit_selection_view('raw_materials',raw_materials_table))
+Logistics_Button(raw_materials_option_frame,"Add Item",'raw_materials',raw_materials_table,lambda: Add_View(window,'raw_materials',raw_materials_table,1))
+Logistics_Button(raw_materials_option_frame,"Edit Selection",'raw_materials',raw_materials_table,lambda: edit_check(raw_materials_table))
+
+Total_Label("raw_materials",raw_materials_command_frame)
 
 raw_materials_view_frame.pack()
 raw_materials_option_frame.pack()
