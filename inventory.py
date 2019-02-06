@@ -44,6 +44,20 @@ def raw_edit(sql_edit):
     conn.commit()
     conn.close()
 
+def barrel_edit(sql_edit):
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("UPDATE 'barrels' SET barrel_number=?,type=?,pg=?,date_filled=?,age=?,investor=? WHERE barrel_number=? AND type=? AND pg=? AND date_filled=? AND age=? AND investor=?", sql_edit)
+    conn.commit()
+    conn.close()
+
+def grain_edit(sql_edit):
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("UPDATE 'grain' SET order_number=?,type=?,amount=?,price=?,total=? WHERE order_number=? AND type=? AND amount=? AND price=? AND total=?", sql_edit)
+    conn.commit()
+    conn.close()
+
 def view_widget(window,widget,location,sqlite_table,column,item,gui_table):
     '''Removes current packed widgets from window frame and replaces with new widget
     chosen.
@@ -88,11 +102,6 @@ def view_products(sqlite_table,column,item,gui_table):
         gui_table.insert("",END,values = row,tags=(tag,))
     gui_table.tag_configure('even', background='#E8E8E8')
 
-#iterates through list of items and creates buttons based on 'class_name' object
-def button_maker(class_name,list,master_widget,sqlite_table,gui_table):
-    for item in list:
-        class_name(master=master_widget,text=item,sqlite_table=sqlite_table,gui_table=gui_table).pack(anchor='center')
-
 #create production sheets toplevel window upon clicking the menu option,
 #populate with files within production_sheets folder
 def sheets_view():
@@ -130,6 +139,37 @@ def labels_view():
     y = (screen_height/2) - (500/2)
     labels_window.geometry("%dx%d+%d+%d" % (300,window_height,x,y))
     labels_window.resizable(0,0)
+
+
+def edit_check(sqlite_table,gui_table,edit_func):
+    item_values = gui_table.item(gui_table.selection())['values']
+    if item_values:
+        Edit_View(window,sqlite_table,gui_table,2,edit_func)
+    else:
+        messagebox.showerror("Selection Error","Please select an inventory item.")
+
+def treeview_sort_column(tv, col, reverse):
+    l = [(tv.set(k, col), k) for k in tv.get_children('')]
+    l.sort(reverse=reverse)
+
+    # rearrange items in sorted positions
+    for index, (val, k) in enumerate(l):
+        tv.move(k, '', index)
+        tv.item(k,tags=())
+        if index % 2 == 0:
+            tv.item(k,tags=('even',))
+    tv.tag_configure('even',background="#E8E8E8")
+
+    # reverse sort next time
+    tv.heading(col, text=col, command=lambda c=col: treeview_sort_column(tv, c, not reverse))
+
+def total_update(sqlite_table):
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("SELECT SUM(amount*price) FROM " + sqlite_table)
+    total = list(cur)[0][0]
+    conn.close()
+    return total
 
 #creates toplevel populated by inputs for items in table
 class Add_View(Toplevel):
@@ -170,10 +210,15 @@ class Add_View(Toplevel):
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
         self.entry_col = entry_col
+        self.x = (screen_width/2) - (width/2) + 100
+        self.y = ((screen_height/2) - (height/2)) + 50
         Toplevel.__init__(self,master=master)
-        for index,description in enumerate(self.gui_table.columns):
+        self.title_frame = Frame(self)
+        Label(self.title_frame,text="Add Item to "+ self.sqlite_table.replace("_"," ").title() + " Inventory",font="Arial 10 bold").pack()
+        self.title_frame.grid(row=0,column=0,columnspan=2)
+        for index,description in enumerate(self.gui_table.columns,1):
             if (description.lower() != 'type'):
-                Label(self,text=description).grid(row=index,column=0)
+                Label(self,text=description + ":").grid(row=index,column=0,sticky=W)
                 if description.lower() == 'total':
                     self.total_text = StringVar()
                     self.total_entry = Entry(self,textvariable=self.total_text)
@@ -193,7 +238,7 @@ class Add_View(Toplevel):
                     self.date_entry.config(state="readonly")
                     def cal_button():
                         self.top = Toplevel(window)
-                        self.cal = Calendar(top, font="Arial 14", selectmode='day', locale='en_US',
+                        self.cal = Calendar(self.top, font="Arial 14", selectmode='day', locale='en_US',
                                        cursor="hand2")
                         self.cal.pack(fill="both", expand=True)
                         def retrieve_date():
@@ -205,7 +250,7 @@ class Add_View(Toplevel):
                         Button(self.top, text="ok", command = retrieve_date).pack()
                         self.top.focus()
                     self.image = Image.open("calendar.png")
-                    self.image.resize((22,22))
+                    self.image = self.image.resize((22,22))
                     self.photo = ImageTk.PhotoImage(self.image)
                     self.cal_link = Button(self, image=self.photo, command = cal_button)
                     self.cal_link.image = self.photo
@@ -213,15 +258,12 @@ class Add_View(Toplevel):
                 elif ((description.lower().find('total') != -1) or (description.lower().find('age') != -1)):
                     self.labels = [x for x in reversed(self.grid_slaves(column=0)) if (x.winfo_class() == 'Label')]
                     for entry in self.labels:
-                        if entry.cget("text").lower() == "amount":
+                        if entry.cget("text").lower().find("amount") != -1:
                             self.amount_row = entry.grid_info()['row']
                             self.amount_entry = self.grid_slaves(row=self.amount_row,column=self.entry_col)[0]
-                        if entry.cget("text").lower() == "price":
+                        if entry.cget("text").lower().find("price") != -1:
                             self.price_row = entry.grid_info()['row']
                             self.price_entry = self.grid_slaves(row=self.price_row,column=self.entry_col)[0]
-                        if entry.cget("text").find("date") != -1:
-                            self.date_row = entry.grid_info()['row']
-                            self.date_entry = self.grid_slaves(row=self.date_row,column=self.entry_col)[0]
                     def total_after():
                         def total_update():
                             try:
@@ -239,13 +281,13 @@ class Add_View(Toplevel):
                                 self.date_diff = datetime.now() - self.date_value
                                 self.barrel_age = "%d years, %d months" % (math.floor(self.date_diff.days/365.2425), (self.date_diff.days%365.2425)/30)
                                 self.age_text.set(self.barrel_age)
-                            except AttributeError:
+                            except (AttributeError, ValueError):
                                 pass
                         total_update()
                         self.after(150,total_after)
                     total_after()
             else:   #handle type case
-                Label(self,text=description).grid(row=index,column=0)
+                Label(self,text=description + ":").grid(row=index,column=0,sticky=W)
                 self.type_var = StringVar(master)
                 self.type_var.set(type_options[sqlite_table][0])
                 self.options = OptionMenu(self,self.type_var,*tuple(type_options[sqlite_table]))
@@ -253,18 +295,18 @@ class Add_View(Toplevel):
                 self.options.grid(row=index,column=self.entry_col)
                 self.window_height += 35
         self.grid_size = self.grid_size()[1]
-        Button(self,text="Add Item",command = lambda : self.add_item(self.sqlite_table)).grid(row=self.grid_size+1,column=self.entry_col,sticky=N+E+S+W)
-        Button(self,text="Cancel",command = lambda : self.destroy()).grid(row=self.grid_size+2,column=self.entry_col,sticky=N+E+S+W)
+        self.button_frame = Frame(self)
+        Button(self.button_frame,text="Add Item",width=10,command = lambda : self.add_item(self.sqlite_table)).pack(side=LEFT,padx=5,pady=5)
+        Button(self.button_frame,text="Cancel",width=10,command = lambda : self.destroy()).pack(side=LEFT,padx=5,pady=5)
+        self.button_frame.grid(row=self.grid_size+1,column=0,columnspan=2)
         self.title("Add to " + self.sqlite_table.replace("_"," ").title())
         self.focus()
-        self.x = (screen_width/2) - (500/2)
-        self.y = (screen_height/2) - (500/2)
-        self.geometry(("%dx%d+%d+%d") % (300,self.window_height,self.x,self.y))
+        self.geometry("+%d+%d" % (self.x,self.y))
         self.resizable(0,0)
 
 class Edit_View(Add_View):
 
-    def edit_selection(self):
+    def edit_selection(self,edit_func):
         self.changes = []
         self.edit_entries = [x for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == 'Menubutton')]
         for entry in self.edit_entries:
@@ -273,60 +315,39 @@ class Edit_View(Add_View):
             elif entry.winfo_class() == 'Menubutton':
                 self.changes.append(self.type_var.get())
             else:
-                messagebox.showerror("Input Error","At least one input is blank, please try again.",parent=toplevel_widg)
+                messagebox.showerror("Input Error","At least one input is blank, please try again.",parent=self)
                 return
         self.current_values = [x.cget('text') for x in reversed(self.grid_slaves(column=1)) if (x.winfo_class() == 'Label')]
         self.changes = tuple(self.changes + self.current_values)
-        raw_edit(self.changes)
+        edit_func(self.changes)
         db_update()
         view_products(self.sqlite_table,'null','All',self.gui_table)
         self.destroy()
 
-    def __init__(self,master,sqlite_table,gui_table,entry_col):
+    def __init__(self,master,sqlite_table,gui_table,entry_col,edit_func):
         self.master = master
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
         self.entry_col = entry_col
+        self.edit_func = edit_func
         self.item_values = self.gui_table.item(self.gui_table.selection())['values']
         if self.item_values:
             Add_View.__init__(self,master,sqlite_table,gui_table,entry_col)
             self.title("Edit " + self.sqlite_table.replace("_"," ").title())
+            self.title_frame.destroy()
+            self.title_frame = Frame(self)
+            Label(self.title_frame,text="Edit Item in "+ self.sqlite_table.replace("_"," ").title() + " Inventory",font="Arial 10 bold").pack()
+            self.title_frame.grid(row=0,column=0,columnspan=3)
             for index,description in enumerate(self.gui_table.columns):
                 if (description.lower() != 'type'):
-                    Label(self,text=self.item_values[index],foreground='blue').grid(row=index,column=1)
+                    Label(self,text=self.item_values[index],foreground='blue').grid(row=index+1,column=1)
                 else:
-                    Label(self,text=self.item_values[index],foreground='blue').grid(row=index,column=1)
-            Button(self,text="Edit Item",command = lambda : self.edit_selection()).grid(row=self.grid_size+1,column=self.entry_col,sticky=N+E+S+W)
-            Button(self,text="Cancel",command = lambda : self.destroy()).grid(row=self.grid_size+2,column=self.entry_col,sticky=N+E+S+W)
-
-def edit_check(gui_table):
-    item_values = gui_table.item(gui_table.selection())['values']
-    if item_values:
-        Edit_View(window,'raw_materials',raw_materials_table,2)
-    else:
-        messagebox.showerror("Selection Error","Please select an inventory item.")
-
-def treeview_sort_column(tv, col, reverse):
-    l = [(tv.set(k, col), k) for k in tv.get_children('')]
-    l.sort(reverse=reverse)
-
-    # rearrange items in sorted positions
-    for index, (val, k) in enumerate(l):
-        tv.move(k, '', index)
-        tv.item(k,tags=())
-        if index % 2 == 0:
-            tv.item(k,tags=('even',))
-    tv.tag_configure('even',background="#E8E8E8")
-
-    # reverse sort next time
-    tv.heading(col, text=col, command=lambda c=col: treeview_sort_column(tv, c, not reverse))
-
-def total_update(sqlite_table):
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("SELECT SUM(amount*price) FROM " + sqlite_table)
-    total = list(cur)[0][0]
-    conn.close()
+                    Label(self,text=self.item_values[index],foreground='blue').grid(row=index+1,column=1)
+            self.button_frame.destroy()
+            self.button_frame = Frame(self)
+            Button(self.button_frame,text="Edit Item",command = lambda : self.edit_selection(self.edit_func)).pack(side=LEFT,padx=5,pady=5)
+            Button(self.button_frame,text="Cancel",command = lambda : self.destroy()).pack(side=LEFT,padx=5,pady=5)
+            self.button_frame.grid(row=self.grid_size+1,column=0,columnspan=3)
 
 class Sheet_Label(Label):
     '''Creates a clickable label with link to file in given file location.
@@ -349,21 +370,38 @@ class Sheet_Label(Label):
             file = webbrowser.open_new(file_location)
         self.bind("<Button-1>",func=button_click)
 
+class View_Frame(LabelFrame):
+
+    def __init__(self,master,sqlite_table,gui_table,labels):
+        self.master = master
+        self.sqlite_table = sqlite_table
+        self.gui_table = gui_table
+        self.height = int(screen_height/1.5)
+        self.labels = labels
+        LabelFrame.__init__(self,master=self.master,height=self.height,bd=5,relief=RIDGE,text="View",font="bold")
+        for label in self.labels:
+            View_Button(master=self,text=label,sqlite_table=self.sqlite_table,gui_table=self.gui_table)
+        self.pack()
+
 #gives view button functionality to view items by type
 class View_Button(Button):
+
     def __init__(self,master,text,sqlite_table,gui_table):
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
         Button.__init__(self,master,text=text,command = lambda: view_products(sqlite_table,"Type",text,gui_table),width=20,height=2, font=('Calibri',12,'bold'))
+        self.pack()
 
 #gives production buttons functionality
 class Inventory_Button(Button):
+
     def __init__(self,master,text,sqlite_table,gui_table):
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
         Button.__init__(self,master,text=text,width=20,height=2,font=('Calibri',12,'bold'))
 
 class Logistics_Button(Button):
+
     def __init__(self,master,text,sqlite_table,gui_table,command):
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
@@ -383,13 +421,18 @@ class Treeview_Table(ttk.Treeview):
 
 class Total_Label(LabelFrame):
 
+    def total_after(self):
+        self.text = "{0:,.2f}".format(total_update(self.sqlite_table))
+        self.text_var.set("$%s" % (self.text))
+        self.after(150,self.total_after)
+
     def __init__(self,sqlite_table,master):
         self.sqlite_table = sqlite_table
         self.master = master
-        LabelFrame.__init__(self,master,height=height,width=command_width, text = "Inventory Value", bd = 5, relief = RIDGE, font = "bold")
-        self.total_update()
-        self.text = "{0:,.2f}".format(self.total)
-        Label(self,text="$%s" % (self.text),bd=10, font="Arial 15",fg="dark slate grey").pack(fill=BOTH)
+        self.text_var = StringVar()
+        LabelFrame.__init__(self,master,height=height,width=command_width,text="Inventory Value",bd=5,relief=RIDGE,font="bold")
+        self.total_after()
+        Label(self,textvariable=self.text_var,bd=10,font="Arial 15 bold",fg="dark slate grey").pack(fill=BOTH)
         self.pack(side=BOTTOM,fill=X)
 
 #used to search for the string literal within a filename that occurs before the file extension (Ex. '.txt')
@@ -442,10 +485,10 @@ raw_materials_frame = ttk.Frame(bottle_inventory_notebook)
 bottle_frame = ttk.Frame(bottle_inventory_notebook)
 production_frame = ttk.Frame(bottle_inventory_notebook)
 materials_used_frame = ttk.Frame(bottle_inventory_notebook)
-bottle_inventory_notebook.add(raw_materials_frame, text = "Raw Materials",padding=10)
+bottle_inventory_notebook.add(raw_materials_frame, text="Raw Materials",padding=10)
 bottle_inventory_notebook.add(production_frame, text="Production Log",padding=10)
-bottle_inventory_notebook.add(materials_used_frame, text="Materials Used", padding=10)
-bottle_inventory_notebook.add(bottle_frame, text = "Bottle Inventory",padding=10)
+bottle_inventory_notebook.add(materials_used_frame, text="Materials Used",padding=10)
+bottle_inventory_notebook.add(bottle_frame, text="Bottle Inventory",padding=10)
 bottle_inventory_notebook.pack(side=BOTTOM,fill=BOTH,expand=1)
 
 #create raw materials table
@@ -457,17 +500,14 @@ view_products('raw_materials','null','All',raw_materials_table)
 #create raw materials command frame and populate with view and options buttons
 raw_materials_command_frame = Frame(raw_materials_frame, height = height,width = command_width)
 
-raw_materials_view_frame = LabelFrame(raw_materials_command_frame,height = height, bd = 5, relief= RIDGE, text="View", font="bold")
-raw_materials_view_buttons = ["Bottles","Boxes","Caps","Capsules","Labels","All"]
-button_maker(View_Button,raw_materials_view_buttons,raw_materials_view_frame,'raw_materials',raw_materials_table)
+raw_materials_view_frame = View_Frame(raw_materials_command_frame,'raw_materials',raw_materials_table,["Bottles","Boxes","Caps","Capsules","Labels","All"])
 
 raw_materials_option_frame = LabelFrame(raw_materials_command_frame,height = height, text = "Options", bd = 5, relief = RIDGE, font = "bold")
 Logistics_Button(raw_materials_option_frame,"Add Item",'raw_materials',raw_materials_table,lambda: Add_View(window,'raw_materials',raw_materials_table,1))
-Logistics_Button(raw_materials_option_frame,"Edit Selection",'raw_materials',raw_materials_table,lambda: edit_check(raw_materials_table))
+Logistics_Button(raw_materials_option_frame,"Edit Selection",'raw_materials',raw_materials_table,lambda: edit_check('raw_materials',raw_materials_table,raw_edit))
 
 Total_Label("raw_materials",raw_materials_command_frame)
 
-raw_materials_view_frame.pack()
 raw_materials_option_frame.pack()
 raw_materials_command_frame.pack(padx=10)
 
@@ -496,14 +536,11 @@ bottle_table = Treeview_Table(bottle_frame,("Type","Product","Amount","Price","T
 #create bottle command frame and populate with view and option buttons
 bottle_command_frame = Frame(bottle_frame,height=height,width=command_width)
 
-bottle_view_frame = LabelFrame(bottle_command_frame,height=height, bd=5, relief=RIDGE, text="View", font="bold")
-bottle_view_buttons = ["Vodka","Whiskey","Rum","Other","All"]
-button_maker(View_Button,bottle_view_buttons,bottle_view_frame,'bottles',bottle_table)
+bottle_view_frame = View_Frame(bottle_command_frame,'bottles',bottle_table,["Vodka","Whiskey","Rum","Other","All"])
 
 bottle_option_frame = LabelFrame(bottle_command_frame, height=height, bd=5, relief=RIDGE, text="Options", font="bold")
-Logistics_Button(bottle_option_frame,"Add Item",'bottles',bottle_table,lambda: add_item_view('bottles',bottle_table))
+Logistics_Button(bottle_option_frame,"Add Item",'bottles',bottle_table,lambda: Add_View(window,'bottles',bottle_table,1))
 
-bottle_view_frame.pack()
 bottle_option_frame.pack()
 bottle_command_frame.pack(padx=10)
 
@@ -513,7 +550,7 @@ grain_inventory_frame = ttk.Frame(grain_inventory_notebook)
 grain_inventory_notebook.add(grain_inventory_frame, text="Grain Inventory", padding=10)
 
 #create grain inventory table and pack within grain frame
-grain_table = Treeview_Table(grain_inventory_frame,("Order No.","Type","Amount","Price","Total"))
+grain_table = Treeview_Table(grain_inventory_frame,("Order No","Type","Amount","Price","Total"))
 
 #create grain command frame and populate with option buttons
 grain_command_frame = Frame(grain_inventory_frame,height=height,width=command_width)
@@ -522,7 +559,10 @@ grain_option_frame = LabelFrame(grain_command_frame,height=height,bd=5,relief=RI
 Logistics_Button(grain_option_frame,"Produce Mash",'grain',grain_table,None)
 Logistics_Button(grain_option_frame,"Edit Selection",'grain',grain_table,None)
 Logistics_Button(grain_option_frame,"Mash Production Sheet",'grain',grain_table,None)
-Logistics_Button(grain_option_frame,"Add Grain",'grain',grain_table,lambda: add_item_view('grain',grain_table))
+Logistics_Button(grain_option_frame,"Add Grain",'grain',grain_table,lambda: Add_View(window,'grain',grain_table,1))
+Logistics_Button(grain_option_frame,"Edit Selection",'grain',grain_table, lambda: edit_check('grain',grain_table,grain_edit))
+
+Total_Label('grain',grain_command_frame)
 
 grain_option_frame.pack()
 grain_command_frame.pack(padx=10)
@@ -533,19 +573,17 @@ barrel_frame = ttk.Frame(barrel_inventory_notebook)
 barrel_inventory_notebook.add(barrel_frame, text="Barrel Inventory",padding=10)
 
 #create barrel inventory table
-barrel_table = Treeview_Table(barrel_frame,("Barrel No.","Type","Proof Gallons","Date Filled","Age","Investor"))
+barrel_table = Treeview_Table(barrel_frame,("Barrel No","Type","Proof Gallons","Date Filled","Age","Investor"))
 
 #create barrel command frame and populate with view and option buttons
 barrel_command_frame = Frame(barrel_frame,height=height,width=command_width)
 
-barrel_view_frame = LabelFrame(barrel_command_frame,height=height,bd=5,relief=RIDGE,text="View",font="bold")
-barrel_view_buttons = ["Bourbon","Rye","Malt","Other","All"]
-button_maker(View_Button,barrel_view_buttons,barrel_view_frame,'barrels',barrel_table)
+barrel_view_frame = View_Frame(barrel_command_frame,'barrels',barrel_table,["Bourbon","Rye","Malt","Other","All"])
 
 barrel_option_frame = LabelFrame(barrel_command_frame,height=height,bd=5,relief=RIDGE,text="Options",font="bold")
-Logistics_Button(barrel_option_frame,"Add Barrel",'barrels',barrel_table,lambda: add_item_view('barrels',barrel_table))
+Logistics_Button(barrel_option_frame,"Add Barrel",'barrels',barrel_table,lambda: Add_View(window,'barrels',barrel_table,1))
+Logistics_Button(barrel_option_frame,"Edit Selection",'barrels',barrel_table, lambda: edit_check('barrels',barrel_table,barrel_edit))
 
-barrel_view_frame.pack()
 barrel_option_frame.pack()
 barrel_command_frame.pack(padx=10)
 
