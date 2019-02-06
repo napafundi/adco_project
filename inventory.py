@@ -10,7 +10,10 @@ from datetime import datetime
 import math
 
 def database():
-    global conn,cur
+    """Create inventory database if it does not exist. Update certain values within
+    the database.
+    """
+
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("CREATE TABLE IF NOT EXISTS 'raw_materials' (type TEXT,item TEXT, amount INTEGER, price REAL, total TEXT)")
@@ -28,6 +31,10 @@ def database():
     conn.close()
 
 def db_update():
+    """Updates inventory database values for "total" column in raw_materials,bottles,
+    and grain tables. Updates "age" values for the barrels table.
+    """
+
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'raw_materials' SET total= PRINTF('%s%g', '$', amount*price)")
@@ -38,6 +45,12 @@ def db_update():
     conn.close()
 
 def raw_edit(sql_edit):
+    """Updates the 'raw_materials' table with the changes provided by sql_edit.
+
+    Args:
+        sql_edit (tuple):Contains the changes and current values for updating the table row.
+    """
+
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'raw_materials' SET type=?,item=?,amount=?,price=?,total=? WHERE type=? AND item=? AND amount=? AND price=? AND total=?", sql_edit)
@@ -45,6 +58,12 @@ def raw_edit(sql_edit):
     conn.close()
 
 def barrel_edit(sql_edit):
+    """Updates the 'barrels' table with the changes provided by sql_edit.
+
+    Args:
+        sql_edit (tuple):Contains the changes and current values for updating the table row.
+    """
+
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'barrels' SET barrel_number=?,type=?,pg=?,date_filled=?,age=?,investor=? WHERE barrel_number=? AND type=? AND pg=? AND date_filled=? AND age=? AND investor=?", sql_edit)
@@ -52,6 +71,11 @@ def barrel_edit(sql_edit):
     conn.close()
 
 def grain_edit(sql_edit):
+    """Updates the 'grain' table with the changes provided by sql_edit.
+
+    Args:
+        sql_edit (tuple):Contains the changes and current values for updating the table row.
+    """
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'grain' SET order_number=?,type=?,amount=?,price=?,total=? WHERE order_number=? AND type=? AND amount=? AND price=? AND total=?", sql_edit)
@@ -59,15 +83,20 @@ def grain_edit(sql_edit):
     conn.close()
 
 def view_widget(window,widget,location,sqlite_table,column,item,gui_table):
-    '''Removes current packed widgets from window frame and replaces with new widget
+    """Removes current packed widgets from window frame and replaces with new widget
     chosen.
 
-    Parameters:
-    window (Tk root object):Master window to remove widgets from
-    widget (Tk widget object):Widget to be displayed
-    padx (int):Widget x-padding value
-    location (str):Position to place new widget
-    '''
+    Args:
+        window (Tk root object):Master window to remove widgets from
+        widget (Tk widget object):Widget to be displayed
+        location (str):Position to pack new widget
+        sqlite_table (sqlite table):Table to display information from
+        column (str):Column to which the 'item' filter is applied
+        item (str):Item which is filtered for
+        gui_table (Tk treeview object):Table where info will be displayed
+    Returns:
+        view_products(sqlite_table,column,item,gui_table)
+    """
 
     for widg in window.pack_slaves():
         widg.pack_forget()
@@ -75,15 +104,15 @@ def view_widget(window,widget,location,sqlite_table,column,item,gui_table):
     view_products(sqlite_table,column,item,gui_table)
 
 def view_products(sqlite_table,column,item,gui_table):
-    '''Fetches info from sqlite_table based on an item filter. Returns information
-    into the current gui_table.
+    """Fetches info from sqlite_table based on an item filter. Returns information
+    into the current gui_table.Configures even-numbered rows to have a grey background.
 
-    Parameters:
-    sqlite_table(str):Sqlite table to fetch data from.
-    column (str):Column to which the 'item' filter is applied.
-    item (str):Item which is filtered for.
-    gui_table (Tk treeview object):Table where info will be displayed.
-    '''
+    Args:
+        sqlite_table(str):Sqlite table to fetch data from.
+        column (str):Column to which the 'item' filter is applied
+        item (str):Item which is filtered for.
+        gui_table (Tk treeview object):Table where info will be displayed.
+    """
 
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
@@ -102,9 +131,11 @@ def view_products(sqlite_table,column,item,gui_table):
         gui_table.insert("",END,values = row,tags=(tag,))
     gui_table.tag_configure('even', background='#E8E8E8')
 
-#create production sheets toplevel window upon clicking the menu option,
-#populate with files within production_sheets folder
 def sheets_view():
+    """Displays a toplevel window populated by clickable links to production sheets.
+    Production sheets are found within the 'production_sheets' folder.
+    """
+
     sheets_window = Toplevel(window)
     files = os.listdir(os.getcwd() + "\\production_sheets")
     window_height = 0
@@ -121,9 +152,11 @@ def sheets_view():
     sheets_window.geometry("%dx%d+%d+%d" % (300,window_height,x,y))
     sheets_window.resizable(0,0)
 
-#create case labels toplevel window upon clicking the menu option,
-#populate with files within case_labels folder
 def labels_view():
+    """Displays a toplevel window populated by clickable links to case label sheets.
+    Label sheets are found within the 'case_labels' folder.
+    """
+
     labels_window = Toplevel(window)
     files = os.listdir(os.getcwd() + "\\case_labels")
     window_height = 0
@@ -142,6 +175,18 @@ def labels_view():
 
 
 def edit_check(sqlite_table,gui_table,edit_func):
+    """Checks current gui_table to see if a selection has been made. If so, creates
+    an instance of the Edit_View class, creating a populated toplevel window. If not,
+    displays a messagebox prompting the user to make a selection.
+
+    Args:
+        sqlite_table (sqlite table):Used as Edit_View arg. See Edit_View for details.
+        gui_table (Tk treeview table):Used as Edit_View arg. See Edit_View for details.
+        edit_func (function):Used as Edit_View arg. See Edit_View for details.
+    Returns:
+        Edit_View(window,sqlite_table,gui_table,2,edit_func)
+    """
+
     item_values = gui_table.item(gui_table.selection())['values']
     if item_values:
         Edit_View(window,sqlite_table,gui_table,2,edit_func)
