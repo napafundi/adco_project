@@ -193,22 +193,39 @@ def edit_check(sqlite_table,gui_table,edit_func):
     else:
         messagebox.showerror("Selection Error","Please select an inventory item.")
 
-def treeview_sort_column(tv, col, reverse):
-    l = [(tv.set(k, col), k) for k in tv.get_children('')]
+def gui_table_sort(gui_table, column, reverse):
+    """Sorts gui tables in ascending order based on the column header clicked.
+    The next click upon the header will be in reverse order.
+
+    Args:
+        gui_table (Tk treeview table):Table that will be sorted
+        column (str):Column name used as basis for sorting
+        reverse (bool):Whether or not the sort is in reverse
+    """
+    l = [(gui_table.set(k, column), k) for k in gui_table.get_children()]
+    print(gui_table.get_children(''))
     l.sort(reverse=reverse)
 
     # rearrange items in sorted positions
     for index, (val, k) in enumerate(l):
-        tv.move(k, '', index)
-        tv.item(k,tags=())
+        gui_table.move(k, '', index)
+        gui_table.item(k,tags=())
         if index % 2 == 0:
-            tv.item(k,tags=('even',))
-    tv.tag_configure('even',background="#E8E8E8")
+            gui_table.item(k,tags=('even',))
+    gui_table.tag_configure('even',background="#E8E8E8")
 
     # reverse sort next time
-    tv.heading(col, text=col, command=lambda c=col: treeview_sort_column(tv, c, not reverse))
+    gui_table.heading(column, text=column, command=lambda c=column: gui_table_sort(gui_table, c, not reverse))
 
 def total_update(sqlite_table):
+    """Returns the sum of all values in a table's total column. Used by the
+    Total_Label class to display the output.
+
+    Args:
+        sqlite_table (sqlite table):Table from which total values are taken
+    Returns:
+        total, where total = SUM(amount*price) from the sqlite table
+    """
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("SELECT SUM(amount*price) FROM " + sqlite_table)
@@ -218,13 +235,26 @@ def total_update(sqlite_table):
 
 #creates toplevel populated by inputs for items in table
 class Add_View(Toplevel):
+    """A toplevel widget with labels corresponding to sqlite table columns and entry
+    widgets to insert data into the table.
 
+    Args:
+        master (tkinter widget object):Parent widget of the Add_View object
+        sqlite_table (sqlite table):Table that will be added to
+        gui_table (Tk treeview table):Table where label and entry widgets will come
+            from
+        entry_col (int):Column index where entries will be placed by .grid()
+    """
     def add_item(self,sqlite_table):
-        '''Work through toplevel to find entry widgets and extract these values to be
-        inserted into the given sqlite_table.
+        '''Work through Add_View toplevel to find entry widgets and extract these values to be
+        inserted into the given sqlite table. Uses db_update() to update certain
+        column values afterwards and view_products() to display the updated gui table.
 
-        Parameters:
-        sqlite_table (str):The name of the sqlite table to add items to.
+        Args:
+            sqlite_table (sqlite table):Table to insert new entry within
+        Returns:
+            db_update()
+            view_products(self.sqlite_table,'null','All',self.gui_table)
         '''
 
         self.additions = []
@@ -249,6 +279,56 @@ class Add_View(Toplevel):
         db_update()
         view_products(self.sqlite_table,'null','All',self.gui_table)
         self.destroy()
+
+    def cal_button(self):
+        """Creates a toplevel window to provide a calendar date selection tool.
+        """
+
+        self.top = Toplevel(window)
+        self.cal = Calendar(self.top, font="Arial 14", selectmode='day', locale='en_US',
+                       cursor="hand2")
+        self.cal.pack(fill="both", expand=True)
+        def retrieve_date():
+            """Updates the date-entry widget within the toplevel widget.
+            """
+            self.date_entry.config(state=NORMAL)
+            self.date_entry.delete(0,END)
+            self.date_entry.insert(END,self.cal.selection_get().strftime("%Y-%m-%d"))
+            self.date_entry.config(state="readonly")
+            self.top.destroy()
+        Button(self.top, text="ok", command = retrieve_date).pack()
+        self.top.focus()
+
+    def total_after(self):
+        """Widget after-function to auto-update total and age entry values.Repeats
+        every 150ms.
+        """
+        def total_update():
+            """Tries to update total and age entry values.
+
+            Raises:
+                AttributeError: if price_entry, amount_entry or date_entry don't exist
+                ValueError: if price_entry, amount_entry or date_entry values are
+                    currently empty
+            """
+            
+            try:
+                self.price_num = self.price_entry.get()
+                self.amount_num = self.amount_entry.get()
+                self.total_string = "$%.2f" % (float(self.amount_num)*float(self.price_num))
+                self.total_text.set(self.total_string)
+                return
+            except (AttributeError, ValueError):
+                pass
+            try:
+                self.date_value = datetime.strptime(self.date_entry.get(),'%Y-%m-%d')
+                self.date_diff = datetime.now() - self.date_value
+                self.barrel_age = "%d years, %d months" % (math.floor(self.date_diff.days/365.2425), (self.date_diff.days%365.2425)/30)
+                self.age_text.set(self.barrel_age)
+            except (AttributeError, ValueError):
+                pass
+        total_update()
+        self.after(150,self.total_after)
 
     def __init__(self,master,sqlite_table,gui_table,entry_col):
         self.window_height = 0
@@ -281,23 +361,10 @@ class Add_View(Toplevel):
                     self.date_index = index
                     self.date_entry = self.grid_slaves(row=self.date_index,column=self.entry_col)[0]
                     self.date_entry.config(state="readonly")
-                    def cal_button():
-                        self.top = Toplevel(window)
-                        self.cal = Calendar(self.top, font="Arial 14", selectmode='day', locale='en_US',
-                                       cursor="hand2")
-                        self.cal.pack(fill="both", expand=True)
-                        def retrieve_date():
-                            self.date_entry.config(state=NORMAL)
-                            self.date_entry.delete(0,END)
-                            self.date_entry.insert(END,self.cal.selection_get().strftime("%Y-%m-%d"))
-                            self.date_entry.config(state="readonly")
-                            self.top.destroy()
-                        Button(self.top, text="ok", command = retrieve_date).pack()
-                        self.top.focus()
                     self.image = Image.open("calendar.png")
                     self.image = self.image.resize((22,22))
                     self.photo = ImageTk.PhotoImage(self.image)
-                    self.cal_link = Button(self, image=self.photo, command = cal_button)
+                    self.cal_link = Button(self, image=self.photo, command = self.cal_button)
                     self.cal_link.image = self.photo
                     self.cal_link.grid(row=index,column=self.entry_col+1)
                 elif ((description.lower().find('total') != -1) or (description.lower().find('age') != -1)):
@@ -309,28 +376,7 @@ class Add_View(Toplevel):
                         if entry.cget("text").lower().find("price") != -1:
                             self.price_row = entry.grid_info()['row']
                             self.price_entry = self.grid_slaves(row=self.price_row,column=self.entry_col)[0]
-                    def total_after():
-                        def total_update():
-                            try:
-                                self.price_num = self.price_entry.get()
-                                self.amount_num = self.amount_entry.get()
-                                self.total_string = "$%.2f" % (float(self.amount_num)*float(self.price_num))
-                                self.total_text.set(self.total_string)
-                                return
-                            except ValueError:
-                                self.total_text.set("$")
-                            except AttributeError:
-                                pass
-                            try:
-                                self.date_value = datetime.strptime(self.date_entry.get(),'%Y-%m-%d')
-                                self.date_diff = datetime.now() - self.date_value
-                                self.barrel_age = "%d years, %d months" % (math.floor(self.date_diff.days/365.2425), (self.date_diff.days%365.2425)/30)
-                                self.age_text.set(self.barrel_age)
-                            except (AttributeError, ValueError):
-                                pass
-                        total_update()
-                        self.after(150,total_after)
-                    total_after()
+                    self.total_after()
             else:   #handle type case
                 Label(self,text=description + ":").grid(row=index,column=0,sticky=W)
                 self.type_var = StringVar(master)
@@ -461,7 +507,7 @@ class Treeview_Table(ttk.Treeview):
         self.columns = columns
         for i in range(len(columns)):
             self.column(self.columns[i],anchor='center',width=self.width)
-            self.heading(str('#' + str((i+1))),text=self.columns[i],command = lambda col=self.columns[i]: treeview_sort_column(self,col, False))
+            self.heading(str('#' + str((i+1))),text=self.columns[i],command = lambda col=self.columns[i]: gui_table_sort(self,col, False))
         self.pack(side=RIGHT,fill=BOTH,expand=1)
 
 class Total_Label(LabelFrame):
