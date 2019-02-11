@@ -18,7 +18,7 @@ def database():
     cur = conn.cursor()
     cur.execute("CREATE TABLE IF NOT EXISTS 'raw_materials' (type TEXT,item TEXT, amount INTEGER, price REAL, total TEXT)")
     cur.execute("UPDATE 'raw_materials' SET total= PRINTF('%s%.2f', '$', amount*price)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'production_log' (product TEXT, amount INTEGER)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'production' (date DATE, product TEXT, amount INTEGER)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'bottles' (type TEXT, product TEXT, amount INTEGER,price REAL, total TEXT)")
     cur.execute("UPDATE 'bottles' SET total= PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'grain' ('order_number' TEXT, type TEXT, amount INTEGER,price REAL, total TEXT)")
@@ -79,6 +79,18 @@ def grain_edit(sql_edit):
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'grain' SET order_number=?,type=?,amount=?,price=?,total=? WHERE order_number=? AND type=? AND amount=? AND price=? AND total=?", sql_edit)
+    conn.commit()
+    conn.close()
+
+def production_edit(sql_edit):
+    """Updates the 'production' table with changes provided by sql_edit.
+
+    Args:
+        sql_edit (tuple):Contains the changes and current values for updating the table row
+    """
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("UPDATE 'production' SET date=?, product=?, amount=? WHERE date=?, product=? AND amount=?", sql_edit)
     conn.commit()
     conn.close()
 
@@ -311,7 +323,7 @@ class Add_View(Toplevel):
                 ValueError: if price_entry, amount_entry or date_entry values are
                     currently empty
             """
-            
+
             try:
                 self.price_num = self.price_entry.get()
                 self.amount_num = self.amount_entry.get()
@@ -540,8 +552,8 @@ window = Tk()
 window.title("Albany Distilling Company Inventory")
 screen_width = window.winfo_screenwidth()
 screen_height = window.winfo_screenheight()
-width = int(screen_width/1.5)
-height = int(screen_height/1.5)
+width = int(screen_width/1.2)
+height = int(screen_height/1.2)
 command_width = int(.33*width)
 table_width = int(.66*width)
 x = (screen_width/2) - (width/2)
@@ -575,10 +587,8 @@ bottle_inventory_notebook = ttk.Notebook(window, height=height, width=width)
 raw_materials_frame = ttk.Frame(bottle_inventory_notebook)
 bottle_frame = ttk.Frame(bottle_inventory_notebook)
 production_frame = ttk.Frame(bottle_inventory_notebook)
-materials_used_frame = ttk.Frame(bottle_inventory_notebook)
 bottle_inventory_notebook.add(raw_materials_frame, text="Raw Materials",padding=10)
 bottle_inventory_notebook.add(production_frame, text="Production Log",padding=10)
-bottle_inventory_notebook.add(materials_used_frame, text="Materials Used",padding=10)
 bottle_inventory_notebook.add(bottle_frame, text="Bottle Inventory",padding=10)
 bottle_inventory_notebook.pack(side=BOTTOM,fill=BOTH,expand=1)
 
@@ -611,15 +621,10 @@ production_table = Treeview_Table(production_frame,("Date","Product","Amount"))
 production_command_frame = Frame(production_frame,height=height,width=command_width)
 
 production_opt_frame = LabelFrame(production_command_frame,height=height,bd=5,relief=RIDGE,text="Options",font="bold")
-Logistics_Button(production_opt_frame,"Edit Selection",'production',production_table,None)
+Logistics_Button(production_opt_frame,"Edit Selection",'production',production_table,lambda: edit_check('production',production_table,production_edit))
 
 production_opt_frame.pack()
 production_command_frame.pack(padx=10)
-
-#create materials used table
-materials_used_table = Treeview_Table(materials_used_frame,("Product", "Amount","Date"))
-
-#TODO: populate materials used table
 
 #create bottle table
 bottle_table = Treeview_Table(bottle_frame,("Type","Product","Amount","Price","Total"))
@@ -648,7 +653,6 @@ grain_command_frame = Frame(grain_inventory_frame,height=height,width=command_wi
 
 grain_option_frame = LabelFrame(grain_command_frame,height=height,bd=5,relief=RIDGE,text="Options",font="bold")
 Logistics_Button(grain_option_frame,"Produce Mash",'grain',grain_table,None)
-Logistics_Button(grain_option_frame,"Edit Selection",'grain',grain_table,None)
 Logistics_Button(grain_option_frame,"Mash Production Sheet",'grain',grain_table,None)
 Logistics_Button(grain_option_frame,"Add Grain",'grain',grain_table,lambda: Add_View(window,'grain',grain_table,1))
 Logistics_Button(grain_option_frame,"Edit Selection",'grain',grain_table, lambda: edit_check('grain',grain_table,grain_edit))
