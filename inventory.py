@@ -6,7 +6,7 @@ import os
 import webbrowser
 from PIL import Image, ImageTk
 import re
-from datetime import datetime
+from datetime import datetime,date
 import math
 
 def database():
@@ -19,9 +19,9 @@ def database():
     cur.execute("CREATE TABLE IF NOT EXISTS 'raw_materials' (type TEXT, product TEXT, amount INTEGER, price REAL, total TEXT)")
     cur.execute("UPDATE 'raw_materials' SET total=PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'production' (date DATE, product TEXT, amount INTEGER)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'in_progress' (date DATE, product TEXT, amount INTEGER, case_size INTEGER)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'bottles' (type TEXT, product TEXT, cases INTEGER, case_size INTEGER, price REAL, total TEXT)")
-    cur.execute("UPDATE 'bottles' SET total=PRINTF('%s%.2f', '$', cases*price)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'in_progress' (date DATE, product TEXT, amount INTEGER, description INTEGER)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'bottles' (type TEXT, product TEXT, amount INTEGER, case_size INTEGER, price REAL, total TEXT)")
+    cur.execute("UPDATE 'bottles' SET total=PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'samples' (type TEXT, product TEXT, amount INTEGER, price REAL, total TEXT)")
     cur.execute("UPDATE 'samples' SET total=PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'grain' ('order_number' TEXT, type TEXT, amount INTEGER,price REAL, total TEXT)")
@@ -41,7 +41,7 @@ def db_update():
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'raw_materials' SET total=PRINTF('%s%g', '$', amount*price)")
-    cur.execute("UPDATE 'bottles' SET total=PRINTF('%s%g', '$', cases*price)")
+    cur.execute("UPDATE 'bottles' SET total=PRINTF('%s%g', '$', amount*price)")
     cur.execute("UPDATE 'samples' SET total=PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("UPDATE 'grain' SET total=PRINTF('%s%g', '$', amount*price)")
     cur.execute("UPDATE 'barrels' SET age=PRINTF('%d years, %d months',(julianday('now') - julianday(date_filled)) / 365,(julianday('now') - julianday(date_filled)) % 365 / 30)")
@@ -83,7 +83,7 @@ def in_progress_edit(sql_edit):
 
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
-    cur.execute("UPDATE 'in_progress' SET date=?, product=?, amount=?, case_size=? WHERE date=? AND product=? AND amount=? AND case_size=?", sql_edit)
+    cur.execute("UPDATE 'in_progress' SET date=?, product=?, amount=?, description=? WHERE date=? AND product=? AND amount=? AND description=?", sql_edit)
     conn.commit()
     conn.close()
 
@@ -96,7 +96,7 @@ def bottles_edit(sql_edit):
 
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
-    cur.execute("UPDATE 'bottles' SET type=?, product=?, cases=?, case_size=?, price=?, total=? WHERE type=? AND product=? AND cases=? AND case_size=? AND price=? AND total=?", sql_edit)
+    cur.execute("UPDATE 'bottles' SET type=?, product=?, amount=?, case_size=?, price=?, total=? WHERE type=? AND product=? AND amount=? AND case_size=? AND price=? AND total=?", sql_edit)
     conn.commit()
     conn.close()
 
@@ -122,7 +122,7 @@ def barrel_edit(sql_edit):
 
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
-    cur.execute("UPDATE 'barrels' SET barrel_number=?,type=?,pg=?,date_filled=?,age=?,investor=? WHERE barrel_number=? AND type=? AND pg=? AND date_filled=? AND age=? AND investor=?", sql_edit)
+    cur.execute("UPDATE 'barrels' SET barrel_number=?, type=?, pg=?, date_filled=?, age=?, investor=? WHERE barrel_number=? AND type=? AND pg=? AND date_filled=? AND age=? AND investor=?", sql_edit)
     conn.commit()
     conn.close()
 
@@ -274,7 +274,7 @@ def gui_table_sort(gui_table, column, reverse):
     # reverse sort next time
     gui_table.heading(column, text=column, command=lambda c=column: gui_table_sort(gui_table, c, not reverse))
 
-def total_update(sqlite_table):
+def total_calc(sqlite_table):
     """Returns the sum of all values in a table's total column. Used by the
     Total_Label class to display the output.
 
@@ -313,7 +313,7 @@ class Add_View(Toplevel):
         Toplevel.__init__(self,master=master)
         self.title_frame = Frame(self)
         Label(self.title_frame,text="Add Product to "+ self.sqlite_table.replace("_"," ").title() + " Inventory",font="Arial 10 bold").pack()
-        self.title_frame.grid(row=0,column=0,columnspan=2)
+        self.title_frame.grid(row=0,column=0,columnspan=2,pady=5)
         for index,description in enumerate(self.gui_table.columns,1):
             if (description.lower() != 'type'):
                 Label(self,text=description + ":").grid(row=index,column=0,sticky=W)
@@ -507,30 +507,116 @@ class Production_View(Toplevel):
         self.x = (screen_width/2) - (width/2) + 100
         self.y = ((screen_height/2) - (height/2)) + 50
         Toplevel.__init__(self,master=master)
-        conn = sqlite3.Connection("inventory.db")
-        cur = conn.cursor()
-        cur.execute("SELECT product FROM \'" + self.sqlite_table + "\'")
-        product_rows = cur.fetchall()
-        print(product_rows)
-        product_list = [x[0] for x in product_rows]
-        for index,description in enumerate(self.gui_table.columns):
-            if (description.lower() == 'type'):
-                Label(self,text=description + ":").grid(row=index,column=0,sticky=W)
-                self.type_var = StringVar(master)
-                self.type_var.set(type_options[sqlite_table][0])
-                self.options = OptionMenu(self,self.type_var,*tuple(type_options[sqlite_table]))
-                self.options.config(width=14, background="white")
-                self.options.grid(row=index,column=1)
-            if (description.lower() == 'product'):
-                Label(self,text=description + ":").grid(row=index,column=0,sticky=W)
-                self.product_var = StringVar(master)
-                self.product_var.set(product_rows[0][0])
-                self.products = OptionMenu(self,self.product_var,*tuple(product_list))
-                self.products.grid(row=index,column=1)
+        self.title_frame = Frame(self)
+        Label(self.title_frame,text="Production",font="Arial 10 bold").pack()
+        self.title_frame.grid(row=0,column=0,columnspan=3,pady=5)
+        self.product_frame = Frame(self)
+        Label(self.product_frame,text="Total Bottles").grid(row=0,column=0)
+        Label(self.product_frame,text="Cases").grid(row=0,column=1)
+        Label(self.product_frame,text="Product").grid(row=0,column=2)
+        Entry(self.product_frame).grid(row=1,column=0,padx=5)
+        Entry(self.product_frame).grid(row=1,column=1,padx=5)
+        self.conn = sqlite3.Connection("inventory.db")
+        self.conn.row_factory = lambda cursor, row: row[0]
+        self.cur = self.conn.cursor()
+        self.cur.execute("SELECT product FROM 'bottles'")
+        self.product_rows = self.cur.fetchall()
+        self.products = ttk.Combobox(self.product_frame,values=self.product_rows)
+        self.products.config(width=20, background="white")
+        self.products.set(self.product_rows[0])
+        self.products.grid(row=1,column=2,padx=5)
+        self.product_frame.grid(row=1,column=0,columnspan=3)
+        self.materials = Frame(self)
+        Label(self.materials,text="Materials Used",font="Arial 10 bold").pack()
+        self.materials.grid(row=3,column=0,columnspan=3,pady=5)
+        Label(self,text="Type").grid(row=4,column=0,pady=2)
+        Label(self,text="Amount").grid(row=4,column=1,pady=2)
+        Label(self,text="Material").grid(row=4,column=2,pady=2)
+        self.type_rows = type_options['raw_materials']
+        for index,description in enumerate(self.type_rows,5):
+            Label(self,text=description + ":").grid(row=index,column=0,sticky=W)
+            Entry(self).grid(row=index,column=1)
+            self.cur.execute("SELECT product FROM 'raw_materials' WHERE type='" + description + "\'")
+            self.rows = self.cur.fetchall()
+            self.rows.append("None")
+            self.opt_menu = ttk.Combobox(self,values=self.rows)
+            self.opt_menu.config(width=20, background="white", justify='center', state='readonly')
+            self.opt_menu.set(self.rows[0])
+            self.opt_menu.grid(row=index,column=2,padx=5)
+        self.grid_size = self.grid_size()[1]
+        self.check_var = IntVar()
+        self.check_var.set(1)
+        self.check_b = Checkbutton(self, text="Are the products finished? (i.e. labeled)", variable=self.check_var, command = self.cbox_check)
+        self.check_b.grid(row=self.grid_size+1,column=0,columnspan=3)
+        self.samples_frame = Frame(self)
+        Label(self.samples_frame,text="Samples").grid(row=0,column=0)
+        self.samples_entry = Entry(self.samples_frame)
+        self.samples_entry.grid(row=0,column=1)
+        self.samples_frame.grid(row=self.grid_size+2,column=0,columnspan=3)
+        self.button_frame = Frame(self)
+        Button(self.button_frame,text="Confirm",width=10,command = self.confirm).pack(side=LEFT,padx=5,pady=5)
+        Button(self.button_frame,text="Cancel",width=10,command = lambda : self.destroy()).pack(side=LEFT,padx=5,pady=5)
+        self.button_frame.grid(row=self.grid_size+3,column=0,columnspan=3)
         self.title("Production")
         self.focus()
         self.geometry("+%d+%d" % (self.x,self.y))
         self.resizable(0,0)
+
+    def confirm(self):
+
+        self.product_amount = self.product_frame.grid_slaves(row=1,column=0)[0].get()
+        self.case_amount = self.product_frame.grid_slaves(row=1,column=1)[0].get()
+        self.product_var = self.product_frame.grid_slaves(row=1,column=2)[0].get()
+        self.samples_var = self.samples_entry.get()
+        self.materials = [x.get() for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'TCombobox')]
+        self.entries = [x.get() for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Entry')]
+        self.types = [x.cget("text").rstrip(":") for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Label' and x.cget("text").find(":") != -1)]
+        print(self.types)
+        for entry in self.entries:
+            if not entry or not re.search(r'^[ 0-9]+$',entry):
+                messagebox.showerror("Materials Input Error","At least one input within the materials used section is blank or not an integer value, please try again.",parent=self)
+                return
+        if (not self.product_amount or not re.search(r'^[ 0-9]+$',self.product_amount)) or (not self.case_amount or not re.search(r'^[ 0-9]+$',self.case_amount)):
+            messagebox.showerror("Product Input Error","The 'Amount' or 'Cases' entry for your product are either blank, or are not an integer value, please try again.",parent=self)
+            return
+        if (not self.samples_entry.get() or not re.search(r'^[ 0-9]+$',self.samples_entry.get())) and (self.check_var.get() == 1):
+            messagebox.showerror("Sample Input Error","The samples entry must be non-empty and an integer value, please try again.",parent=self)
+            return
+        if self.check_var.get() == 0:
+            self.desc_var = StringVar()
+            self.desc_tl = Toplevel(self)
+            Label(self.desc_tl,text="Please provide a description of why the production was considered currently unfinished. (ex. 'bottles unlabeled', 'waiting for labels')").grid(row=0,column=0,columnspan=2)
+            self.desc_text = Text(self.desc_tl,height=2,width=30)
+            self.desc_text.grid(row=1,column=0,columnspan=2)
+            self.desc_fr = Frame(self.desc_tl)
+            self.conf_b = Button(self.desc_fr,text="Confirm",command = lambda: self.desc_var.set(self.desc_text.get("1.0",END))).grid(row=0,column=0)
+            Button(self.desc_fr,text="Cancel").grid(row=0,column=1)
+            self.desc_fr.grid(row=2,column=0,columnspan=2)
+            self.conf_b.wait_variable(self.desc_var)
+            #self.cur.execute("INSERT INTO 'in_progress' VALUES ()")
+        elif self.check_var.get() == 1:
+            self.cur.execute("UPDATE 'bottles' SET amount=(amount + ?) WHERE product=?",(self.case_amount,self.product_var))
+            self.cur.execute("UPDATE 'samples' SET amount=(amount + ?) WHERE product=?",(self.samples_var,self.product_var))
+        self.curr_date = date.today()
+        self.cur.execute("INSERT INTO 'production' VALUES (?,?,?)", (self.curr_date,self.product_var,self.product_amount))
+        for (material,subtr,type) in zip(self.materials,self.entries,self.types):
+            print(material,subtr)
+            if material != "None":
+                self.cur.execute("UPDATE 'raw_materials' SET amount=(amount - ?) WHERE product=? AND type=?",(subtr,material,type))
+        self.conn.commit()
+        self.conn.close()
+        db_update()
+        view_products('raw_materials','null','All',raw_tbl)
+        self.destroy()
+
+    def cbox_check(self):
+
+        if self.check_var.get() == 1:
+            self.samples_entry.config(state='normal')
+            self.samples_entry.delete(0,END)
+        if self.check_var.get() == 0:
+            self.samples_entry.insert(0, "N/A")
+            self.samples_entry.config(state='readonly')
 
 
 class Sheet_Label(Label):
@@ -637,7 +723,7 @@ class Total_Label(LabelFrame):
 
     def total_after(self):
         try:
-            self.text = "{0:,.2f}".format(total_update(self.sqlite_table))
+            self.text = "{0:,.2f}".format(total_calc(self.sqlite_table))
             self.text_var.set("$%s" % (self.text))
         except:
             self.text_var.set("$0.00")
@@ -650,7 +736,7 @@ fileRegex = re.compile(r'''
     ([a-zA-Z_0-9])''',re.VERBOSE)
 
 #option values for dropdown menus
-type_options = {'raw_materials': ['Bottles','Boxes','Caps','Capsules','Labels'], 'bottles': ['Vodka','Whiskey','Rum','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other'], 'grain': ['Corn','Rye','Malted Barley','Malted Wheat','Oat']}
+type_options = {'raw_materials': ['Bottles','Boxes','Caps','Capsules','Labels'], 'bottles': ['Vodka','Whiskey','Rum','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other'], 'grain': ['Corn','Rye','Malted Barley','Malted Wheat','Oat'], 'samples':['Vodka','Whiskey','Rum','Other']}
 
 #create root window, resize based on user's screen info
 window = Tk()
@@ -688,176 +774,148 @@ s.configure("TButton",font=('Calibri',12,'bold'))
 inventory = database()
 
 #create bottle inventory notebook, populate with tabbed frames
-bottle_inventory_notebook = ttk.Notebook(window, height=height, width=width)
-raw_materials_frame = ttk.Frame(bottle_inventory_notebook)
-production_frame = ttk.Frame(bottle_inventory_notebook)
-inprog_fr = ttk.Frame(bottle_inventory_notebook)
-bottle_frame = ttk.Frame(bottle_inventory_notebook)
-samples_frame = ttk.Frame(bottle_inventory_notebook)
-bottle_inventory_notebook.add(raw_materials_frame, text="Raw Materials",padding=10)
+bottinv_nb = ttk.Notebook(window, height=height, width=width)
+raw_fr = ttk.Frame(bottinv_nb)
+prod_fr = ttk.Frame(bottinv_nb)
+inprog_fr = ttk.Frame(bottinv_nb)
+bott_fr = ttk.Frame(bottinv_nb)
+samp_fr = ttk.Frame(bottinv_nb)
+bottinv_nb.add(raw_fr, text="Raw Materials",padding=10)
 
-bottle_inventory_notebook.add(production_frame, text="Production Log",padding=10)
-production_frame.bind('<Visibility>',lambda event: view_products('production','null','All',production_table))
+bottinv_nb.add(prod_fr, text="Production Log",padding=10)
+prod_fr.bind('<Visibility>',lambda event: view_products('production','null','All',prod_tbl))
 
-bottle_inventory_notebook.add(inprog_fr,text="In Progress",padding=10)
+bottinv_nb.add(inprog_fr,text="In Progress",padding=10)
+inprog_fr.bind('<Visibility>',lambda event: view_products('in_progress','null','All',inprog_tbl))
 
+bottinv_nb.add(bott_fr, text="Bottle Inventory",padding=10)
+bott_fr.bind('<Visibility>',lambda event: view_products('bottles','null','All',bott_tbl))
 
-bottle_inventory_notebook.add(bottle_frame, text="Bottle Inventory",padding=10)
-bottle_frame.bind('<Visibility>',lambda event: view_products('bottles','null','All',bottle_table))
+bottinv_nb.add(samp_fr,text="Samples",padding=10)
+samp_fr.bind('<Visibility>',lambda event: view_products('samples','null','All',samp_tbl))
 
-bottle_inventory_notebook.add(samples_frame,text="Samples",padding=10)
+bottinv_nb.pack(side=BOTTOM,fill=BOTH,expand=1)
 
-
-bottle_inventory_notebook.pack(side=BOTTOM,fill=BOTH,expand=1)
-
-raw_materials_table = Treeview_Table(raw_materials_frame,("Type","Product","Amount","Price","Total"))
+raw_tbl = Treeview_Table(raw_fr,("Type","Product","Amount","Price","Total"))
 
 #show table upon opening application
-view_products('raw_materials','null','All',raw_materials_table)
+view_products('raw_materials','null','All',raw_tbl)
 
 #create raw materials command frame and populate with view and options buttons
-raw_materials_command_frame = Command_Frame(raw_materials_frame)
-
-raw_materials_view_frame = View_Frame(raw_materials_command_frame,'raw_materials',raw_materials_table,["Bottles","Boxes","Caps","Capsules","Labels","All"])
-
-raw_materials_option_frame = Option_Frame(raw_materials_command_frame)
-Logistics_Button(raw_materials_option_frame,"Add Item",'raw_materials',raw_materials_table,lambda: Add_View(window,'raw_materials',raw_materials_table,1))
-Logistics_Button(raw_materials_option_frame,"Production",'raw_materials',raw_materials_table,lambda: Production_View(window,'bottles',raw_materials_table))
-Logistics_Button(raw_materials_option_frame,"Edit Selection",'raw_materials',raw_materials_table,lambda: edit_check('raw_materials',raw_materials_table,raw_edit))
-
-Total_Label("raw_materials",raw_materials_command_frame)
-
-raw_materials_option_frame.pack()
-raw_materials_command_frame.pack(padx=10)
-
-production_table = Treeview_Table(production_frame,("Date","Product","Amount"))
+raw_cfr = Command_Frame(raw_fr)
+raw_vfr = View_Frame(raw_cfr,'raw_materials',raw_tbl,["Bottles","Boxes","Caps","Capsules","Labels","All"])
+raw_optfr = Option_Frame(raw_cfr)
+Logistics_Button(raw_optfr,"Add Item",'raw_materials',raw_tbl,lambda: Add_View(window,'raw_materials',raw_tbl,1))
+Logistics_Button(raw_optfr,"Production",'raw_materials',raw_tbl,lambda: Production_View(window,'bottles',raw_tbl))
+Logistics_Button(raw_optfr,"Edit Selection",'raw_materials',raw_tbl,lambda: edit_check('raw_materials',raw_tbl,raw_edit))
+Total_Label("raw_materials",raw_cfr)
+raw_optfr.pack()
+raw_cfr.pack(padx=10)
 
 #create production commands frame and populate with an edit button
-production_command_frame = Command_Frame(production_frame)
+prod_tbl = Treeview_Table(prod_fr,("Date","Product","Amount"))
+prod_cfr = Command_Frame(prod_fr)
+prod_optfr = Option_Frame(prod_cfr)
+Logistics_Button(prod_optfr,"Edit Selection",'production',prod_tbl,lambda: edit_check('production',prod_tbl,production_edit))
+prod_optfr.pack()
+prod_cfr.pack(padx=10)
 
-production_opt_frame = Option_Frame(production_command_frame)
-Logistics_Button(production_opt_frame,"Edit Selection",'production',production_table,lambda: edit_check('production',production_table,production_edit))
-
-production_opt_frame.pack()
-production_command_frame.pack(padx=10)
-
-inprog_tbl = Treeview_Table(inprog_fr,("Date","Product","Amount","Case Size"))
-
+#
+inprog_tbl = Treeview_Table(inprog_fr,("Date","Product","Amount","Description"))
 inprog_cfr = Command_Frame(inprog_fr)
-
 inprog_optfr = Option_Frame(inprog_cfr)
 Logistics_Button(inprog_optfr,"Edit Selection",'in_progress',inprog_tbl,lambda: edit_check('in_progress',inprog_tbl,in_progress_edit))
-
 inprog_optfr.pack(padx=10)
 inprog_cfr.pack(padx=10)
 
-bottle_table = Treeview_Table(bottle_frame,("Type","Product","Amount","Price","Total"))
+#
+bott_tbl = Treeview_Table(bott_fr,("Type","Product","Amount (Cases)","Case Size","Price","Total"))
+bott_cfr = Command_Frame(bott_fr)
+bott_vfr = View_Frame(bott_cfr,'bottles',bott_tbl,["Vodka","Whiskey","Rum","Other","All"])
+bott_optfr = Option_Frame(bott_cfr)
+Logistics_Button(bott_optfr,"Add Item",'bottles',bott_tbl,lambda: Add_View(window,'bottles',bott_tbl,1))
+Logistics_Button(bott_optfr,"Edit Selection",'bottles',bott_tbl,lambda: edit_check('bottles',bott_tbl,bottles_edit))
+Total_Label("bottles",bott_cfr)
+bott_optfr.pack()
+bott_cfr.pack(padx=10)
 
-#create bottle command frame and populate with view and option buttons
-bottle_command_frame = Command_Frame(bottle_frame)
-
-bottle_view_frame = View_Frame(bottle_command_frame,'bottles',bottle_table,["Vodka","Whiskey","Rum","Other","All"])
-
-bottle_option_frame = Option_Frame(bottle_command_frame)
-Logistics_Button(bottle_option_frame,"Add Item",'bottles',bottle_table,lambda: Add_View(window,'bottles',bottle_table,1))
-Logistics_Button(bottle_option_frame,"Edit Selection",'bottles',bottle_table,lambda: edit_check('bottles',bottle_table,bottles_edit))
-
-Total_Label("bottles",bottle_command_frame)
-
-bottle_option_frame.pack()
-bottle_command_frame.pack(padx=10)
+#
+samp_tbl = Treeview_Table(samp_fr,("Type","Product","Amount","Price","Total"))
+samp_cfr = Command_Frame(samp_fr)
+samp_vfr = View_Frame(samp_cfr,'samples',samp_tbl,["Vodka","Whiskey","Rum","Other","All"])
+samp_optfr = Option_Frame(samp_cfr)
+Logistics_Button(samp_optfr,"Add Item",'samples',samp_tbl,lambda: Add_View(window,'samples',samp_tbl,1))
+Logistics_Button(samp_optfr,"Edit Selection",'samples',samp_tbl,lambda: edit_check('samples',samp_tbl,sample_edit))
+Total_Label('samples',samp_cfr)
+samp_optfr.pack()
+samp_cfr.pack(padx=10)
 
 #create grain inventory notebook, populate with tabbed frames
-grain_inventory_notebook = ttk.Notebook(window, height=height, width=width)
-grain_inventory_frame = ttk.Frame(grain_inventory_notebook)
-grain_inventory_notebook.add(grain_inventory_frame, text="Grain Inventory", padding=10)
-
-#create grain inventory table and pack within grain frame
-grain_table = Treeview_Table(grain_inventory_frame,("Order No","Type","Amount","Price","Total"))
-
-#create grain command frame and populate with option buttons
-grain_command_frame = Command_Frame(grain_inventory_frame)
-
-grain_option_frame = Option_Frame(grain_command_frame)
-Logistics_Button(grain_option_frame,"Produce Mash",'grain',grain_table,None)
-Logistics_Button(grain_option_frame,"Mash Production Sheet",'grain',grain_table,None)
-Logistics_Button(grain_option_frame,"Add Grain",'grain',grain_table,lambda: Add_View(window,'grain',grain_table,1))
-Logistics_Button(grain_option_frame,"Edit Selection",'grain',grain_table, lambda: edit_check('grain',grain_table,grain_edit))
-
-Total_Label('grain',grain_command_frame)
-
-grain_option_frame.pack()
-grain_command_frame.pack(padx=10)
+grain_nb = ttk.Notebook(window, height=height, width=width)
+grain_fr = ttk.Frame(grain_nb)
+grain_nb.add(grain_fr, text="Grain Inventory", padding=10)
+grain_table = Treeview_Table(grain_fr,("Order No","Type","Amount","Price","Total"))
+grain_cfr = Command_Frame(grain_fr)
+grain_optfr = Option_Frame(grain_cfr)
+Logistics_Button(grain_optfr,"Produce Mash",'grain',grain_table,None)
+Logistics_Button(grain_optfr,"Mash Production Sheet",'grain',grain_table,None)
+Logistics_Button(grain_optfr,"Add Grain",'grain',grain_table,lambda: Add_View(window,'grain',grain_table,1))
+Logistics_Button(grain_optfr,"Edit Selection",'grain',grain_table, lambda: edit_check('grain',grain_table,grain_edit))
+Total_Label('grain',grain_cfr)
+grain_optfr.pack()
+grain_cfr.pack(padx=10)
 
 #create barrel inventory notebook and populates with tabbed frames
-barrel_inventory_notebook = ttk.Notebook(window, height=height, width=width)
-barrel_frame = ttk.Frame(barrel_inventory_notebook)
-barrel_inventory_notebook.add(barrel_frame, text="Barrel Inventory",padding=10)
-
-#create barrel inventory table
-barrel_table = Treeview_Table(barrel_frame,("Barrel No","Type","Proof Gallons","Date Filled","Age","Investor"))
-
-#create barrel command frame and populate with view and option buttons
-barrel_command_frame = Command_Frame(barrel_frame)
-
-barrel_view_frame = View_Frame(barrel_command_frame,'barrels',barrel_table,["Bourbon","Rye","Malt","Other","All"])
-
-barrel_option_frame = Option_Frame(barrel_command_frame)
-Logistics_Button(barrel_option_frame,"Add Barrel",'barrels',barrel_table,lambda: Add_View(window,'barrels',barrel_table,1))
-Logistics_Button(barrel_option_frame,"Edit Selection",'barrels',barrel_table, lambda: edit_check('barrels',barrel_table,barrel_edit))
-
-barrel_option_frame.pack()
-barrel_command_frame.pack(padx=10)
+barr_nb = ttk.Notebook(window, height=height, width=width)
+barr_fr = ttk.Frame(barr_nb)
+barr_nb.add(barr_fr, text="Barrel Inventory",padding=10)
+barr_tbl = Treeview_Table(barr_fr,("Barrel No","Type","Proof Gallons","Date Filled","Age","Investor"))
+barr_cfr = Command_Frame(barr_fr)
+barr_vfr = View_Frame(barr_cfr,'barrels',barr_tbl,["Bourbon","Rye","Malt","Other","All"])
+barr_optfr = Option_Frame(barr_cfr)
+Logistics_Button(barr_optfr,"Add Barrel",'barrels',barr_tbl,lambda: Add_View(window,'barrels',barr_tbl,1))
+Logistics_Button(barr_optfr,"Edit Selection",'barrels',barr_tbl, lambda: edit_check('barrels',barr_tbl,barrel_edit))
+barr_optfr.pack()
+barr_cfr.pack(padx=10)
 
 #create purchase orders notebook with tabbed frames
-purchase_orders_notebook = ttk.Notebook(window,height=height,width=width)
-purchase_orders_frame = Frame(purchase_orders_notebook)
-purchase_orders_notebook.add(purchase_orders_frame,text="Purchase Orders",padding=10)
+po_nb = ttk.Notebook(window,height=height,width=width)
+po_fr = Frame(po_nb)
+po_nb.add(po_fr,text="Purchase Orders",padding=10)
+po_tbl = Treeview_Table(po_fr,("Date","Product","Amount","Price","Total","Destination","PO No."))
+po_cfr = Command_Frame(po_fr)
+po_optfr = Option_Frame(po_cfr)
+Logistics_Button(po_optfr,"Create Purchase Order",'purchase_orders',po_tbl,None)
+Logistics_Button(po_optfr,"View Purchase Order",'purchase_orders',po_tbl,None)
+Logistics_Button(po_optfr,"Edit Selection",'purchase_orders',po_tbl,None)
 
-#create purchase orders table
-purchase_orders_table = Treeview_Table(purchase_orders_frame,("Date","Product","Amount","Price","Total","Destination","PO No."))
-
-#create purchase orders command frame and populate with option buttons
-purchase_orders_command_frame = Command_Frame(purchase_orders_frame)
-
-purchase_orders_option_frame = Option_Frame(purchase_orders_command_frame)
-Logistics_Button(purchase_orders_option_frame,"Create Purchase Order",'purchase_orders',purchase_orders_table,None)
-Logistics_Button(purchase_orders_option_frame,"View Purchase Order",'purchase_orders',purchase_orders_table,None)
-Logistics_Button(purchase_orders_option_frame,"Edit Selection",'purchase_orders',purchase_orders_table,None)
-
-purchase_orders_option_frame.pack()
-purchase_orders_command_frame.pack(padx=10)
+po_optfr.pack()
+po_cfr.pack(padx=10)
 
 #create employee transactions notebook and populate with tabbed frames
-employee_transactions_notebook = ttk.Notebook(window,height=height,width=width)
-employee_transactions_frame = Frame(employee_transactions_notebook)
-employee_transactions_notebook.add(employee_transactions_frame,text="Employee Transactions",padding=10)
-
-#create employee transactions table
-employee_transactions_table = Treeview_Table(employee_transactions_frame,("Date","Product","Amount","Employee"))
-
-#create employee transactions command frame and populate with option buttons
-employee_transactions_command_frame = Command_Frame(employee_transactions_frame)
-
-employee_transactions_options_frame = Option_Frame(employee_transactions_command_frame)
-Logistics_Button(employee_transactions_options_frame,"Checkout Bottles",'employee_transactions',employee_transactions_table,None)
-Logistics_Button(employee_transactions_options_frame,"Edit Selection",'employee_transactions',employee_transactions_table,None)
-
-employee_transactions_options_frame.pack()
-employee_transactions_command_frame.pack(padx=10)
+emptr_nb = ttk.Notebook(window,height=height,width=width)
+emptr_fr = Frame(emptr_nb)
+emptr_nb.add(emptr_fr,text="Employee Transactions",padding=10)
+emptr_tbl = Treeview_Table(emptr_fr,("Date","Product","Amount","Employee"))
+emptr_cfr = Command_Frame(emptr_fr)
+emptr_optfr = Option_Frame(emptr_cfr)
+Logistics_Button(emptr_optfr,"Checkout Bottles",'employee_transactions',emptr_tbl,None)
+Logistics_Button(emptr_optfr,"Edit Selection",'employee_transactions',emptr_tbl,None)
+emptr_optfr.pack()
+emptr_cfr.pack(padx=10)
 
 #create menu bar at the top of the gui, populate with clickable tabs
 menubar = Menu(window)
 
 menu1 = Menu(menubar, tearoff=0)
-menu1.add_command(label="Raw Materials and Bottles", command=lambda: view_widget(window,bottle_inventory_notebook,BOTTOM,'raw_materials','null','All',raw_materials_table))
-menu1.add_command(label="Grain", command=lambda: view_widget(window,grain_inventory_notebook,BOTTOM,'grain','null','All',grain_table))
-menu1.add_command(label="Barrels", command=lambda: view_widget(window,barrel_inventory_notebook,BOTTOM,'barrels','null','All',barrel_table))
+menu1.add_command(label="Raw Materials and Bottles", command=lambda: view_widget(window,bottinv_nb,BOTTOM,'raw_materials','null','All',raw_tbl))
+menu1.add_command(label="Grain", command=lambda: view_widget(window,grain_nb,BOTTOM,'grain','null','All',grain_table))
+menu1.add_command(label="Barrels", command=lambda: view_widget(window,barr_nb,BOTTOM,'barrels','null','All',barr_tbl))
 menubar.add_cascade(label="Inventory", menu=menu1)
 
 menu2 = Menu(menubar, tearoff=0)
-menu2.add_command(label="Purchase Orders", command=lambda: view_widget(window,purchase_orders_notebook,BOTTOM,'purchase_orders','null','All',purchase_orders_table))
-menu2.add_command(label="Employee Transactions", command=lambda: view_widget(window,employee_transactions_notebook,BOTTOM,'employee_transactions','null','All',employee_transactions_table))
+menu2.add_command(label="Purchase Orders", command=lambda: view_widget(window,po_nb,BOTTOM,'purchase_orders','null','All',po_tbl))
+menu2.add_command(label="Employee Transactions", command=lambda: view_widget(window,emptr_nb,BOTTOM,'employee_transactions','null','All',emptr_tbl))
 menubar.add_cascade(label="Shipping and Transactions",menu=menu2)
 
 menu3 = Menu(menubar, tearoff=0)
