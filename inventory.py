@@ -8,6 +8,8 @@ from PIL import Image, ImageTk
 import re
 from datetime import datetime,date
 import math
+import openpyxl
+from openpyxl.styles import Font
 
 def database():
     """Create inventory database if it does not exist. Update certain values within
@@ -556,6 +558,7 @@ class Production_View(Toplevel):
         Button(self.button_frame,text="Confirm",width=10,command = self.confirm).pack(side=LEFT,padx=5,pady=5)
         Button(self.button_frame,text="Cancel",width=10,command = lambda : self.destroy()).pack(side=LEFT,padx=5,pady=5)
         self.button_frame.grid(row=self.grid_size+3,column=0,columnspan=3)
+        self.conn.close()
         self.title("Production")
         self.focus()
         self.geometry("+%d+%d" % (self.x,self.y))
@@ -655,6 +658,14 @@ class Purchase_Order(Toplevel):
 
     def __init__(self,master):
         self.master = master
+        self.x = x + 150
+        self.y = y + 100
+        self.conn = sqlite3.Connection("inventory.db")
+        self.conn.row_factory = lambda cursor, row: row[0]
+        self.cur = self.conn.cursor()
+        self.cur.execute("SELECT product FROM 'bottles'")
+        self.product_rows = self.cur.fetchall()
+        self.conn.close()
         Toplevel.__init__(self,master=self.master)
         self.info_fr = Frame(self,pady=10)
         Label(self.info_fr,text="From:").grid(row=0,column=0,sticky=W)
@@ -662,38 +673,85 @@ class Purchase_Order(Toplevel):
         Label(self.info_fr,text="To:").grid(row=2,column=0,sticky=W)
         Label(self.info_fr,text="PO Date:").grid(row=0,column=2,sticky=W)
         Label(self.info_fr,text="Pick Up Date:").grid(row=1,column=2,sticky=W)
-        self.from_entry = Entry(self.info_fr)
-        self.from_entry.grid(row=0,column=1)
-        self.po_entry = Entry(self.info_fr)
-        self.po_entry.grid(row=1,column=1)
-        self.to_entry = Entry(self.info_fr)
-        self.to_entry.grid(row=2,column=1)
-        self.podate_entry = Entry(self.info_fr)
-        self.podate_entry.grid(row=0,column=3)
-        self.pkupdate_entry = Entry(self.info_fr)
-        self.pkupdate_entry.grid(row=1,column=3)
+        self.from_entry = Entry(self.info_fr).grid(row=0,column=1)
+        self.po_entry = Entry(self.info_fr).grid(row=1,column=1)
+        self.to_entry = Entry(self.info_fr).grid(row=2,column=1)
+        self.podate_entry = Entry(self.info_fr).grid(row=0,column=3)
+        self.pkupdate_entry = Entry(self.info_fr).grid(row=1,column=3)
         self.info_fr.grid(row=0,column=0,columnspan=2)
         self.order_fr = Frame(self,padx=33)
-        Label(self.order_fr,text="QTY").grid(row=0,column=0,sticky=E+W)
-        Label(self.order_fr,text="UNIT").grid(row=0,column=1,sticky=E+W)
-        Label(self.order_fr,text="Product").grid(row=0,column=2,sticky=E+W)
-        Label(self.order_fr,text="Bottle Size").grid(row=0,column=3,sticky=E+W)
-        Label(self.order_fr,text="Unit Cost").grid(row=0,column=4,sticky=E+W)
-        Label(self.order_fr,text="TOTAL").grid(row=0,column=5,sticky=E+W)
-        for i in range(1,15):
-            Entry(self.order_fr,width=5,justify="center").grid(row=i,column=0)
-            Entry(self.order_fr,width=7,justify="center",bg="light gray").grid(row=i,column=1)
-            Entry(self.order_fr,width=10,justify="center").grid(row=i,column=2)
-            Entry(self.order_fr,width=10,justify="center",bg="light gray").grid(row=i,column=3)
-            Entry(self.order_fr,width=10,justify="center").grid(row=i,column=4)
-            Entry(self.order_fr,width=10,justify="center",bg="light gray").grid(row=i,column=5)
-        Label(self.order_fr,text="TOTAL",background="dark slate gray",relief="raised",fg="white").grid(row=15,column=0,columnspan=5,sticky=E+W)
-        Entry(self.order_fr,background="gray",width=10,relief="raised").grid(row=15,column=5,sticky=E+W)
+        Label(self.order_fr,text="QTY").grid(row=0,column=0,sticky=N+E+S+W)
+        Label(self.order_fr,text="UNIT").grid(row=0,column=1,sticky=N+E+S+W)
+        Label(self.order_fr,text="PRODUCT").grid(row=0,column=2,sticky=N+E+S+W)
+        Label(self.order_fr,text="UNIT COST").grid(row=0,column=3,sticky=N+E+S+W)
+        Label(self.order_fr,text="TOTAL").grid(row=0,column=4,sticky=N+E+S+W)
+        for i in range(1,19):
+            Entry(self.order_fr,width=5,justify="center").grid(row=i,column=0,sticky=N+E+S+W)
+            ttk.Combobox(self.order_fr,values=['Cases','Bottles'],width=7,justify="center",state='readonly').grid(row=i,column=1,sticky=N+E+S+W)
+            ttk.Combobox(self.order_fr,values=self.product_rows,justify="center",state='readonly').grid(row=i,column=2)
+            Entry(self.order_fr,width=12,justify="center").grid(row=i,column=3,sticky=N+E+S+W)
+            Entry(self.order_fr,width=12,justify="center",bg="light gray").grid(row=i,column=4,sticky=N+E+S+W)
+        Label(self.order_fr,text="TOTAL",background="dark slate gray",relief="raised",fg="white").grid(row=19,column=0,columnspan=5,sticky=E+W)
+        self.total_var = StringVar()
+        self.total_label = Label(self.order_fr,background="gray",fg="white",width=10,relief="raised",textvariable = self.total_var)
+        self.total_label.grid(row=19,column=4,sticky=E+W)
         for label in self.order_fr.grid_slaves(row=0):
             label.config(background="dark slate gray",relief="raised",fg="white")
         self.order_fr.grid(row=1,column=0,columnspan=2,pady=10)
-        self.geometry("%dx%d+%d+%d" % (400,450,x,y))
-        self.resizable(1,1)
+        self.btn_fr = Frame(self)
+        Button(self.btn_fr,text="Confirm",command=self.confirm).grid(row=0,column=0,padx=10)
+        Button(self.btn_fr,text="Cancel").grid(row=0,column=1,padx=10)
+        self.btn_fr.grid(row=2,column=0,columnspan=2,pady=10)
+        self.total_after()
+        self.geometry("%dx%d+%d+%d" % (445,610,self.x,self.y))
+        self.resizable(0,0)
+        self.focus()
+
+    def total_after(self):
+
+        self.total_entries = [x for x in reversed(self.order_fr.grid_slaves(column=4)) if x.winfo_class() == 'Entry']
+        self.total_sum = 0
+        for entry,i in zip(self.total_entries,range(1,19)):
+            entry.delete(0,END)
+            try:
+                self.row_total = float(self.order_fr.grid_slaves(row=i,column=0)[0].get()) * float(self.order_fr.grid_slaves(row=i,column=3)[0].get())
+                self.row_amt = "{0:,.2f}".format(self.row_total)
+                entry.insert(0,"$%s" % self.row_amt)
+                self.total_sum += self.row_total
+            except:
+                pass
+        self.total_sum = "{0:,.2f}".format(self.total_sum)
+        self.total_var.set("$%s" % self.total_sum)
+        self.after_func = self.after(10,self.total_after)
+
+    def confirm(self):
+        self.after_cancel(self.after_func)
+        self.wb = openpyxl.load_workbook('purchase_orders/blank_po.xlsx')
+        self.sheet = self.wb['Purchase Order']
+        self.font = Font(name='Times New Roman',size=12)
+
+        self.info_entries = [x.get() for x in reversed(self.info_fr.grid_slaves()) if x.winfo_class() == 'Entry']
+        self.info_cells = ['A9','K9','A12','A15','I15']
+        for entry,cell in zip(self.info_entries,self.info_cells):
+
+            self.sheet[cell] = entry
+            self.sheet[cell].font = self.font
+
+
+        self.po_entries = [x.get() for x in reversed(self.order_fr.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == "TCombobox")]
+
+        self.excel_rows = ["A","B","D","J","M"]
+        self.excel_columns = range(18,36)
+        self.index = 0
+        for i in self.excel_columns:
+            for j,k in zip(self.excel_rows,range(self.index,self.index+5)):
+                self.cell = j + str(i)
+                self.sheet[self.cell] = self.po_entries[k]
+                self.sheet[self.cell].font = self.font
+            self.index += 5
+        self.sheet['M36'] = self.total_var.get()
+
+        self.wb.save('po_order1.xlsx')
 
 class Sheet_Label(Label):
     '''Creates a clickable label with link to file in given file location.
