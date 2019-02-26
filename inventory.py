@@ -30,7 +30,7 @@ def database():
     cur.execute("UPDATE 'grain' SET total=PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'barrels' ('barrel_number' TEXT, type TEXT,'pg' INTEGER, 'date_filled' DATE, age TEXT,investor TEXT)")
     cur.execute("UPDATE 'barrels' SET age=PRINTF('%d years, %d months',(julianday('now') - julianday(date_filled)) / 365,(julianday('now') - julianday(date_filled)) % 365 / 30)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'purchase_orders' (date DATE,product TEXT, amount INTEGER, price REAL, total REAL, destination TEXT, 'po_number' TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'purchase_orders' (date DATE,product TEXT, amount INTEGER, unit TEXT, price REAL, total REAL, destination TEXT, 'po_number' TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'employee_transactions' (date DATE,product TEXT, amount INTEGER, employee TEXT)")
     conn.commit()
     conn.close()
@@ -508,15 +508,19 @@ class Production_View(Toplevel):
         self.x = (screen_width/2) - (width/2) + 100
         self.y = ((screen_height/2) - (height/2)) + 50
         Toplevel.__init__(self,master=master)
+
+        #title frame
         self.title_frame = Frame(self)
         Label(self.title_frame,text="Production",font="Arial 10 bold").pack()
         self.title_frame.grid(row=0,column=0,columnspan=3,pady=5)
+
+        #product input frame
         self.product_frame = Frame(self)
         Label(self.product_frame,text="Total Bottles").grid(row=0,column=0)
         Label(self.product_frame,text="Cases").grid(row=0,column=1)
         Label(self.product_frame,text="Product").grid(row=0,column=2)
-        Entry(self.product_frame).grid(row=1,column=0,padx=5)
-        Entry(self.product_frame).grid(row=1,column=1,padx=5)
+        Entry(self.product_frame,validate='key',validatecommand=(self.register(valid_dig),'%S','%d')).grid(row=1,column=0,padx=5)
+        Entry(self.product_frame,validate='key',validatecommand=(self.register(valid_dig),'%S','%d')).grid(row=1,column=1,padx=5)
         self.conn = sqlite3.Connection("inventory.db")
         self.conn.row_factory = lambda cursor, row: row[0]
         self.cur = self.conn.cursor()
@@ -527,16 +531,21 @@ class Production_View(Toplevel):
         self.products.set(self.product_rows[0])
         self.products.grid(row=1,column=2,padx=5)
         self.product_frame.grid(row=1,column=0,columnspan=3)
+
+        #raw materials title frame
         self.materials = Frame(self)
         Label(self.materials,text="Materials Used",font="Arial 10 bold").pack()
         self.materials.grid(row=3,column=0,columnspan=3,pady=5)
+
+        #raw materials input frame
         Label(self,text="Type").grid(row=4,column=0,pady=2)
         Label(self,text="Amount").grid(row=4,column=1,pady=2)
         Label(self,text="Material").grid(row=4,column=2,pady=2)
         self.type_rows = type_options['raw_materials']
+        #create label, entry and option box for each type of raw material
         for index,description in enumerate(self.type_rows,5):
             Label(self,text=description + ":").grid(row=index,column=0,sticky=W)
-            Entry(self).grid(row=index,column=1)
+            Entry(self,validate='key',validatecommand=(self.register(valid_dig),'%S','%d')).grid(row=index,column=1)
             self.cur.execute("SELECT product FROM 'raw_materials' WHERE type='" + description + "\'")
             self.rows = self.cur.fetchall()
             self.rows.append("None")
@@ -545,20 +554,27 @@ class Production_View(Toplevel):
             self.opt_menu.set(self.rows[0])
             self.opt_menu.grid(row=index,column=2,padx=5)
         self.grid_size = self.grid_size()[1]
+        #finished product checkbox
         self.check_var = IntVar()
         self.check_var.set(1)
         self.check_b = Checkbutton(self, text="Are the products finished? (i.e. labeled)", variable=self.check_var, command = self.cbox_check)
         self.check_b.grid(row=self.grid_size+1,column=0,columnspan=3)
+
+        #samples input frame
         self.samples_frame = Frame(self)
         Label(self.samples_frame,text="Samples").grid(row=0,column=0)
-        self.samples_entry = Entry(self.samples_frame)
+        self.samples_entry = Entry(self.samples_frame,validate='key',validatecommand=(self.register(valid_dig),'%S','%d'))
         self.samples_entry.grid(row=0,column=1)
         self.samples_frame.grid(row=self.grid_size+2,column=0,columnspan=3)
+
+        #button frame
         self.button_frame = Frame(self)
         Button(self.button_frame,text="Confirm",width=10,command = self.confirm).pack(side=LEFT,padx=5,pady=5)
         Button(self.button_frame,text="Cancel",width=10,command = lambda : self.destroy()).pack(side=LEFT,padx=5,pady=5)
         self.button_frame.grid(row=self.grid_size+3,column=0,columnspan=3)
-        self.conn.close()
+
+
+        self.conn.close()   #make sure connection is closed
         self.title("Production")
         self.focus()
         self.geometry("+%d+%d" % (self.x,self.y))
@@ -570,21 +586,21 @@ class Production_View(Toplevel):
         self.case_amount = self.product_frame.grid_slaves(row=1,column=1)[0].get()
         self.product_var = self.product_frame.grid_slaves(row=1,column=2)[0].get()
         self.samples_var = self.samples_entry.get()
-        self.materials = [x.get() for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'TCombobox')]
-        self.entries = [x.get() for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Entry')]
-        self.types = [x.cget("text").rstrip(":") for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Label' and x.cget("text").find(":") != -1)]
+        self.materials = [x.get() for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'TCombobox')]    #raw material options
+        self.entries = [x.get() for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Entry')]  #raw material entries
+        self.types = [x.cget("text").rstrip(":") for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Label' and x.cget("text").find(":") != -1)]  #raw material product types
         for entry in self.entries:
-            #check material inputs to ensure non-empty integer values
-            if not entry or not re.search(r'^[ 0-9]+$',entry):
-                messagebox.showerror("Materials Input Error","At least one input within the materials used section is blank or not an integer value, please try again.",parent=self)
+            #check material inputs to ensure non-empty values
+            if not entry:
+                messagebox.showerror("Materials Input Error","At least one input within the materials used section is blank, please try again.",parent=self)
                 return
         #check product and case amounts
-        if (not self.product_amount or not re.search(r'^[ 0-9]+$',self.product_amount)) or (not self.case_amount or not re.search(r'^[ 0-9]+$',self.case_amount)):
-            messagebox.showerror("Product Input Error","The 'Amount' or 'Cases' entry for your product are either blank, or are not an integer value, please try again.",parent=self)
+        if (not self.product_amount) or (not self.case_amount):
+            messagebox.showerror("Product Input Error","One or more of the 'Amount' or 'Cases' entries are blank, please try again.",parent=self)
             return
         #check sample amount and 'finished' checkbox
-        if (not self.samples_entry.get() or not re.search(r'^[ 0-9]+$',self.samples_entry.get())) and (self.check_var.get() == 1):
-            messagebox.showerror("Sample Input Error","The samples entry must be non-empty and an integer value, please try again.",parent=self)
+        if (not self.samples_entry.get()) and (self.check_var.get() == 1):
+            messagebox.showerror("Sample Input Error","The samples entry must be non-empty, please try again.",parent=self)
             return
         self.curr_date = date.today()
         #update 'in_progress' table if products checked as unfinished
@@ -609,13 +625,16 @@ class Production_View(Toplevel):
 
     def cbox_check(self):
 
+        #activate sample entry box and cases amount entry if checkbox is checked
         if self.check_var.get() == 1:
             self.samples_entry.config(state='normal')
             self.samples_entry.delete(0,END)
             self.product_frame.grid_slaves(row=1,column=1)[0].config(state='normal')
             self.product_frame.grid_slaves(row=1,column=1)[0].delete(0,END)
+        #disable sample entry box and cases amount entry if checkbox is unchecked
         if self.check_var.get() == 0:
-            self.samples_entry.insert(0, "N/A")
+            self.samples_entry.delete(0,END)
+            self.samples_entry.insert(0, "0")
             self.samples_entry.config(state='readonly')
             self.product_frame.grid_slaves(row=1,column=1)[0].insert(0, "0")
             self.product_frame.grid_slaves(row=1,column=1)[0].config(state='readonly')
@@ -632,9 +651,16 @@ class Production_View(Toplevel):
             def disable_event():
                 pass
 
+            #set description variable based on description text
             def desc_set():
-                self.desc_var = self.desc_text.get("1.0",END)
-                self.desc_tl.destroy()
+
+                if  not self.desc_text.compare("end-1c","==","1.0"):    #checks if text is empty
+                    self.desc_var = self.desc_text.get("1.0",END)
+                    self.desc_tl.destroy()
+                else:
+                    messagebox.showerror("Input Error","Please input a description.",parent=self.desc_tl)
+                    return
+
 
             #Toplevel to insert description
             self.desc_var = StringVar()
@@ -647,38 +673,69 @@ class Production_View(Toplevel):
             self.conf_b.grid(row=0,column=0)
             Button(self.desc_fr,text="Cancel",command = desc_cancel).grid(row=0,column=1)
             self.desc_fr.grid(row=2,column=0,columnspan=2)
-            self.desc_tl.protocol("WM_DELETE_WINDOW", disable_event)
+            self.desc_tl.protocol("WM_DELETE_WINDOW", disable_event)    #prevent use of 'x-out' button
             self.desc_tl.title("Production Description")
             self.desc_tl.resizable(0,0)
             self.desc_tl.geometry("+%d+%d" % (self.x + 30,self.y + 30))
             self.desc_tl.focus()
-            self.desc_tl.grab_set()
+            self.desc_tl.grab_set() #prevent user from clicking outside of toplevel
 
 class Purchase_Order(Toplevel):
 
     def __init__(self,master):
         self.master = master
         self.x = x + 150
-        self.y = y + 100
+        self.y = y + 20
         self.conn = sqlite3.Connection("inventory.db")
-        self.conn.row_factory = lambda cursor, row: row[0]
+        self.conn.row_factory = lambda cursor, row: row[0]  #returns values in list as opposed to tuple
         self.cur = self.conn.cursor()
         self.cur.execute("SELECT product FROM 'bottles'")
         self.product_rows = self.cur.fetchall()
         self.conn.close()
         Toplevel.__init__(self,master=self.master)
-        self.info_fr = Frame(self,pady=10)
+
+        #title frame
+        self.title_fr = Frame(self)
+        Label(self.title_fr,text="Purchase Order",font="Arial 10 bold").pack()
+        self.title_fr.grid(row=0,column=0,columnspan=2,pady=5)
+
+        #frame containing purchase order shipment information
+        self.info_fr = Frame(self,pady=5)
         Label(self.info_fr,text="From:").grid(row=0,column=0,sticky=W)
         Label(self.info_fr,text="PO Number:").grid(row=1,column=0,sticky=W)
         Label(self.info_fr,text="To:").grid(row=2,column=0,sticky=W)
         Label(self.info_fr,text="PO Date:").grid(row=0,column=2,sticky=W)
         Label(self.info_fr,text="Pick Up Date:").grid(row=1,column=2,sticky=W)
-        self.from_entry = Entry(self.info_fr).grid(row=0,column=1)
-        self.po_entry = Entry(self.info_fr).grid(row=1,column=1)
-        self.to_entry = Entry(self.info_fr).grid(row=2,column=1)
-        self.podate_entry = Entry(self.info_fr).grid(row=0,column=3)
-        self.pkupdate_entry = Entry(self.info_fr).grid(row=1,column=3)
-        self.info_fr.grid(row=0,column=0,columnspan=2)
+        Entry(self.info_fr,justify='center').grid(row=0,column=1)
+        #search for last purchase order in corresponding year folder
+        self.year = datetime.now().year
+        try:
+            self.files = os.listdir(os.getcwd() + "\\purchase_orders\\" + str(self.year))
+        except FileNotFoundError:
+            os.mkdir(os.getcwd() + "\\purchase_orders\\" + str(self.year))
+            self.files = []
+        self.po_nums = []
+        if self.files:
+            for file in self.files:
+                self.mo = poRegex.search(file)
+                if self.mo:
+                    self.po_nums.append(int(self.mo.group(3)))
+            self.new_po_num = str(self.year) + "-" + '{:03}'.format(max(self.po_nums) + 1)
+        else:
+            self.new_po_num = str(self.year) + "-" + '{:03}'.format(1)
+        self.po_entry = Entry(self.info_fr,justify='center')
+        self.po_entry.insert(0, self.new_po_num)
+        self.po_entry.grid(row=1,column=1)
+        Entry(self.info_fr,justify='center').grid(row=2,column=1)
+        self.po_date = Entry(self.info_fr,justify='center')
+        self.po_date.insert(END,"mm-dd-yyyy")
+        self.po_date.grid(row=0,column=3)
+        self.pu_date = Entry(self.info_fr,justify='center')
+        self.pu_date.insert(END,"mm-dd-yyyy")
+        self.pu_date.grid(row=1,column=3)
+        self.info_fr.grid(row=1,column=0,columnspan=2)
+
+        #frame containing purchase order product information
         self.order_fr = Frame(self,padx=33)
         Label(self.order_fr,text="QTY").grid(row=0,column=0,sticky=N+E+S+W)
         Label(self.order_fr,text="UNIT").grid(row=0,column=1,sticky=N+E+S+W)
@@ -686,10 +743,10 @@ class Purchase_Order(Toplevel):
         Label(self.order_fr,text="UNIT COST").grid(row=0,column=3,sticky=N+E+S+W)
         Label(self.order_fr,text="TOTAL").grid(row=0,column=4,sticky=N+E+S+W)
         for i in range(1,19):
-            Entry(self.order_fr,width=5,justify="center").grid(row=i,column=0,sticky=N+E+S+W)
+            Entry(self.order_fr,width=5,justify="center",validate="key",validatecommand=(self.register(valid_dig),'%S','%d')).grid(row=i,column=0,sticky=N+E+S+W)
             ttk.Combobox(self.order_fr,values=['Cases','Bottles'],width=7,justify="center",state='readonly').grid(row=i,column=1,sticky=N+E+S+W)
             ttk.Combobox(self.order_fr,values=self.product_rows,justify="center",state='readonly').grid(row=i,column=2)
-            Entry(self.order_fr,width=12,justify="center").grid(row=i,column=3,sticky=N+E+S+W)
+            Entry(self.order_fr,width=12,justify="center",validate="key",validatecommand=(self.register(valid_dec),'%S','%s','%d')).grid(row=i,column=3,sticky=N+E+S+W)
             Entry(self.order_fr,width=12,justify="center",bg="light gray").grid(row=i,column=4,sticky=N+E+S+W)
         Label(self.order_fr,text="TOTAL",background="dark slate gray",relief="raised",fg="white").grid(row=19,column=0,columnspan=5,sticky=E+W)
         self.total_var = StringVar()
@@ -697,23 +754,28 @@ class Purchase_Order(Toplevel):
         self.total_label.grid(row=19,column=4,sticky=E+W)
         for label in self.order_fr.grid_slaves(row=0):
             label.config(background="dark slate gray",relief="raised",fg="white")
-        self.order_fr.grid(row=1,column=0,columnspan=2,pady=10)
+        self.order_fr.grid(row=2,column=0,columnspan=2,pady=5)
+
+        #button frame
         self.btn_fr = Frame(self)
         Button(self.btn_fr,text="Confirm",command=self.confirm).grid(row=0,column=0,padx=10)
         Button(self.btn_fr,text="Cancel").grid(row=0,column=1,padx=10)
-        self.btn_fr.grid(row=2,column=0,columnspan=2,pady=10)
+        self.btn_fr.grid(row=3,column=0,columnspan=2,pady=5)
+
         self.total_after()
-        self.geometry("%dx%d+%d+%d" % (445,610,self.x,self.y))
+        self.geometry("%dx%d+%d+%d" % (464,610,self.x,self.y))
         self.resizable(0,0)
         self.focus()
 
     def total_after(self):
-
+        #updates total column entry values to be product of quantity and price
+        #sums total columns into final total column, total_var
         self.total_entries = [x for x in reversed(self.order_fr.grid_slaves(column=4)) if x.winfo_class() == 'Entry']
         self.total_sum = 0
         for entry,i in zip(self.total_entries,range(1,19)):
             entry.delete(0,END)
             try:
+                # (quantity * unit cost)
                 self.row_total = float(self.order_fr.grid_slaves(row=i,column=0)[0].get()) * float(self.order_fr.grid_slaves(row=i,column=3)[0].get())
                 self.row_amt = "{0:,.2f}".format(self.row_total)
                 entry.insert(0,"$%s" % self.row_amt)
@@ -722,36 +784,71 @@ class Purchase_Order(Toplevel):
                 pass
         self.total_sum = "{0:,.2f}".format(self.total_sum)
         self.total_var.set("$%s" % self.total_sum)
-        self.after_func = self.after(10,self.total_after)
+        self.after_func = self.after(150,self.total_after)
 
     def confirm(self):
-        self.after_cancel(self.after_func)
+        self.open_ques = messagebox.askquestion("Purchase Order Confirmation", "Are you sure you want to confirm? Please make sure everything is entered correctly")
+
+        self.after_cancel(self.after_func)  #stop after_func to ensure total_var value
+        self.info_entries = [x.get() for x in reversed(self.info_fr.grid_slaves()) if x.winfo_class() == 'Entry']
+        for entry in self.info_entries:
+            if not entry:
+                messagebox.showerror("Input Error","Please make sure all of the information entries have values.",parent=self)
+                return
+        self.po_entries = [x.get() for x in reversed(self.order_fr.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == "TCombobox")]
+        self.complete_po_lists = [self.po_entries[x:x+5] for x in range(0,len(self.po_entries),5)]   #list of lists containing po order values
+        self.filled_po_lists = []
+        for list in self.complete_po_lists:
+            if all(list):
+                self.filled_po_lists.append(list)
+
         self.wb = openpyxl.load_workbook('purchase_orders/blank_po.xlsx')
         self.sheet = self.wb['Purchase Order']
         self.font = Font(name='Times New Roman',size=12)
 
-        self.info_entries = [x.get() for x in reversed(self.info_fr.grid_slaves()) if x.winfo_class() == 'Entry']
+        #get shipment information entry-values into list and input them into corresponding
+        #cells within the 'po' excel sheet
         self.info_cells = ['A9','K9','A12','A15','I15']
         for entry,cell in zip(self.info_entries,self.info_cells):
-
             self.sheet[cell] = entry
             self.sheet[cell].font = self.font
 
-
-        self.po_entries = [x.get() for x in reversed(self.order_fr.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == "TCombobox")]
-
+        #get purchase order entry-values into list and input them into corresponding
+        #cells within the 'po' excel sheet
         self.excel_rows = ["A","B","D","J","M"]
         self.excel_columns = range(18,36)
         self.index = 0
         for i in self.excel_columns:
-            for j,k in zip(self.excel_rows,range(self.index,self.index+5)):
+            for j,k in zip(self.excel_rows,range(0,5)):
                 self.cell = j + str(i)
-                self.sheet[self.cell] = self.po_entries[k]
+                self.sheet[self.cell] = self.complete_po_lists[self.index][k]
                 self.sheet[self.cell].font = self.font
-            self.index += 5
+            self.index += 1
         self.sheet['M36'] = self.total_var.get()
 
-        self.wb.save('po_order1.xlsx')
+        #add purchase orders to 'purchase_orders' table
+        self.conn = sqlite3.Connection("inventory.db")
+        self.cur = self.conn.cursor()
+        for po_list in self.filled_po_lists:
+            self.cur.execute("INSERT INTO 'purchase_orders' VALUES (?,?,?,?,?,?,?,?)", (self.info_entries[3],po_list[2],po_list[0],po_list[1],po_list[3],po_list[4],self.info_entries[2],self.new_po_num))
+        self.conn.commit()
+        self.conn.close()
+        db_update()
+        view_products('purchase_orders','null','All',po_tbl)
+
+        self.excel_file = os.getcwd() + "/purchase_orders/" + str(self.year) + "/" + self.new_po_num + ".xlsx"
+        self.wb.save(self.excel_file)
+
+        self.open_ques = messagebox.askquestion("Open the PO Excel File?", "Would you like to open the Purchase Order file in Excel? This will allow you to print it now.")
+        if self.open_ques == "yes":
+            try:
+                os.system('start EXCEL.EXE ' + self.excel_file)
+            except:
+                messagebox.showerror("Program Error","There was an error finding Excel within the program files.",parent=self)
+        else:
+            pass
+
+        self.destroy()
 
 class Sheet_Label(Label):
     '''Creates a clickable label with link to file in given file location.
@@ -869,12 +966,38 @@ fileRegex = re.compile(r'''
     (.)
     ([a-zA-Z_0-9])''',re.VERBOSE)
 
+poRegex = re.compile(r'''
+    ([a-zA-Z0-9_]+)
+    (-)
+    ([0-9]{3})
+    (.)
+    ([a-zA-Z_0-9]+)''',re.VERBOSE)
+
+def valid_dig(str,act):
+
+    if act == '0':
+        return True
+    else:
+        return str.isdigit()
+
+def valid_dec(str,cur_str,act):
+
+    if act == '0':
+        return True
+    elif str == "." and cur_str.find(".") != -1:
+        return False
+    elif str =="." and cur_str.find(".") == -1:
+        return True
+    else:
+        return str.isdigit()
+
 #option values for dropdown menus
 type_options = {'raw_materials': ['Bottles','Boxes','Caps','Capsules','Labels'], 'bottles': ['Vodka','Whiskey','Rum','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other'], 'grain': ['Corn','Rye','Malted Barley','Malted Wheat','Oat'], 'samples':['Vodka','Whiskey','Rum','Other']}
 
 #create root window, resize based on user's screen info
 window = Tk()
 window.title("Albany Distilling Company Inventory")
+window.wm_iconbitmap('favicon.ico')
 screen_width = window.winfo_screenwidth()
 screen_height = window.winfo_screenheight()
 width = int(screen_width/1.2)
@@ -885,6 +1008,8 @@ x = (screen_width/2) - (width/2)
 y = ((screen_height/2) - (height/2)) - 50
 window.geometry("%dx%d+%d+%d" % (width,height,x,y))
 window.resizable(1,1)
+
+
 
 #set styles for gui and certain widgets
 s = ttk.Style(window)
@@ -1016,7 +1141,7 @@ barr_cfr.pack(padx=10)
 po_nb = ttk.Notebook(window,height=height,width=width)
 po_fr = Frame(po_nb)
 po_nb.add(po_fr,text="Purchase Orders",padding=10)
-po_tbl = Treeview_Table(po_fr,("Date","Product","Amount","Price","Total","Destination","PO No."))
+po_tbl = Treeview_Table(po_fr,("Date","Product","Amount","Unit","Price","Total","Destination","PO No."))
 po_cfr = Command_Frame(po_fr)
 po_optfr = Option_Frame(po_cfr)
 Logistics_Button(po_optfr,"Create Purchase Order",'purchase_orders',po_tbl,lambda: Purchase_Order(window))

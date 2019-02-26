@@ -1,12 +1,8 @@
-import openpyxl
+import os
 
-wb = openpyxl.load_workbook('purchase_orders/blank_po.xlsm')
-print(type(wb))
-
-print(wb.get_sheet_names())
-
-sheet = wb.get_sheet_by_name('Purchase Order')
-
-sheet['A17'].value = "Hello"
-
-print(sheet['A17'].value)
+try:
+    yeet = os.listdir(os.getcwd() + "\\purchase_orders\\" + str(2019))
+    new_po_num = str(2020) + "-" + '{:03}'.format(1)
+    print(yeet)
+except FileNotFoundError:
+    os.mkdir(os.getcwd() + "\\purchase_orders\\" + str(2020))
