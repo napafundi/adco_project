@@ -1,5 +1,5 @@
 from tkinter import *
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, filedialog
 import sqlite3
 from tkcalendar import Calendar
 import os
@@ -252,6 +252,20 @@ def edit_check(sqlite_table,gui_table,edit_func):
     else:
         messagebox.showerror("Selection Error","Please select an inventory item.")
 
+def po_check(gui_table):
+
+    item_values = gui_table.item(gui_table.selection())['values']
+    po_num = item_values[7]
+    print(item_values)
+    if item_values:
+        try:
+            excel_file = os.getcwd() + "/purchase_orders/" + po_num[:4] + "/" + po_num + ".xlsx"
+            os.system('start EXCEL.EXE ' + excel_file)
+        except:
+            messagebox.showerror("Program Error",
+            "There was an error finding Excel within the program files.",parent=window)
+            window.filename = filedialog.askopenfilename(initialdir = os.getcwd() + "/purchase_orders/" + po_num[:4],title = "Select file")
+            os.system('start EXCEL.EXE ' + window.filename)
 def gui_table_sort(gui_table, column, reverse):
     """Sorts gui tables in ascending order based on the column header clicked.
     The next click upon the header will be in reverse order.
@@ -787,68 +801,81 @@ class Purchase_Order(Toplevel):
         self.after_func = self.after(150,self.total_after)
 
     def confirm(self):
-        self.open_ques = messagebox.askquestion("Purchase Order Confirmation", "Are you sure you want to confirm? Please make sure everything is entered correctly")
+        self.open_ques = messagebox.askquestion("Purchase Order Confirmation", \
+        "Are you sure you want to confirm? Please make sure everything is entered correctly." \
+         " Confirming will update inventory values and save the purchase order with the file name, " \
+         + self.new_po_num + ".xlsx",parent=self)
 
-        self.after_cancel(self.after_func)  #stop after_func to ensure total_var value
-        self.info_entries = [x.get() for x in reversed(self.info_fr.grid_slaves()) if x.winfo_class() == 'Entry']
-        for entry in self.info_entries:
-            if not entry:
-                messagebox.showerror("Input Error","Please make sure all of the information entries have values.",parent=self)
-                return
-        self.po_entries = [x.get() for x in reversed(self.order_fr.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == "TCombobox")]
-        self.complete_po_lists = [self.po_entries[x:x+5] for x in range(0,len(self.po_entries),5)]   #list of lists containing po order values
-        self.filled_po_lists = []
-        for list in self.complete_po_lists:
-            if all(list):
-                self.filled_po_lists.append(list)
-
-        self.wb = openpyxl.load_workbook('purchase_orders/blank_po.xlsx')
-        self.sheet = self.wb['Purchase Order']
-        self.font = Font(name='Times New Roman',size=12)
-
-        #get shipment information entry-values into list and input them into corresponding
-        #cells within the 'po' excel sheet
-        self.info_cells = ['A9','K9','A12','A15','I15']
-        for entry,cell in zip(self.info_entries,self.info_cells):
-            self.sheet[cell] = entry
-            self.sheet[cell].font = self.font
-
-        #get purchase order entry-values into list and input them into corresponding
-        #cells within the 'po' excel sheet
-        self.excel_rows = ["A","B","D","J","M"]
-        self.excel_columns = range(18,36)
-        self.index = 0
-        for i in self.excel_columns:
-            for j,k in zip(self.excel_rows,range(0,5)):
-                self.cell = j + str(i)
-                self.sheet[self.cell] = self.complete_po_lists[self.index][k]
-                self.sheet[self.cell].font = self.font
-            self.index += 1
-        self.sheet['M36'] = self.total_var.get()
-
-        #add purchase orders to 'purchase_orders' table
-        self.conn = sqlite3.Connection("inventory.db")
-        self.cur = self.conn.cursor()
-        for po_list in self.filled_po_lists:
-            self.cur.execute("INSERT INTO 'purchase_orders' VALUES (?,?,?,?,?,?,?,?)", (self.info_entries[3],po_list[2],po_list[0],po_list[1],po_list[3],po_list[4],self.info_entries[2],self.new_po_num))
-        self.conn.commit()
-        self.conn.close()
-        db_update()
-        view_products('purchase_orders','null','All',po_tbl)
-
-        self.excel_file = os.getcwd() + "/purchase_orders/" + str(self.year) + "/" + self.new_po_num + ".xlsx"
-        self.wb.save(self.excel_file)
-
-        self.open_ques = messagebox.askquestion("Open the PO Excel File?", "Would you like to open the Purchase Order file in Excel? This will allow you to print it now.")
-        if self.open_ques == "yes":
-            try:
-                os.system('start EXCEL.EXE ' + self.excel_file)
-            except:
-                messagebox.showerror("Program Error","There was an error finding Excel within the program files.",parent=self)
+        if self.open_ques == 'no':
+            return
         else:
-            pass
+            self.after_cancel(self.after_func)  #stop after_func to ensure total_var value
+            self.info_entries = [x.get() for x in reversed(self.info_fr.grid_slaves()) if x.winfo_class() == 'Entry']
+            for entry in self.info_entries:
+                if not entry:
+                    messagebox.showerror("Input Error","Please make sure all of the information entries have values.",parent=self)
+                    return
+            self.po_entries = [x.get() for x in reversed(self.order_fr.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == "TCombobox")]
+            self.complete_po_lists = [self.po_entries[x:x+5] for x in range(0,len(self.po_entries),5)]   #list of lists containing po order values
+            self.filled_po_lists = []
+            for list in self.complete_po_lists:
+                if all(list):
+                    self.filled_po_lists.append(list)
 
-        self.destroy()
+            self.wb = openpyxl.load_workbook('purchase_orders/blank_po.xlsx')
+            self.sheet = self.wb['Purchase Order']
+            self.font = Font(name='Times New Roman',size=12)
+
+            #get shipment information entry-values into list and input them into corresponding
+            #cells within the 'po' excel sheet
+            self.info_cells = ['A9','K9','A12','A15','I15']
+            for entry,cell in zip(self.info_entries,self.info_cells):
+                self.sheet[cell] = entry
+                self.sheet[cell].font = self.font
+
+            #get purchase order entry-values into list and input them into corresponding
+            #cells within the 'po' excel sheet
+            self.excel_rows = ["A","B","D","J","M"]
+            self.excel_columns = range(18,36)
+            self.index = 0
+            for i in self.excel_columns:
+                for j,k in zip(self.excel_rows,range(0,5)):
+                    self.cell = j + str(i)
+                    self.sheet[self.cell] = self.complete_po_lists[self.index][k]
+                    self.sheet[self.cell].font = self.font
+                self.index += 1
+            self.sheet['M36'] = self.total_var.get()
+
+            #add purchase orders to 'purchase_orders' table
+            self.conn = sqlite3.Connection("inventory.db")
+            self.cur = self.conn.cursor()
+            for po_list in self.filled_po_lists:    #update purchase orders inventory table
+                self.cur.execute("INSERT INTO 'purchase_orders' VALUES (?,?,?,?,?,?,?,?)",
+                (self.info_entries[3],po_list[2],po_list[0],po_list[1],po_list[3],po_list[4],self.info_entries[2],self.new_po_num))
+                if po_list[1] == "Cases":
+                    self.cur.execute("UPDATE 'bottles' SET amount=(amount - ?) WHERE product=?",(po_list[0],po_list[2]))
+                else:
+                    self.cur.execute("UPDATE 'samples' SET amount=(amount - ?) WHERE product=?",(po_list[0],po_list[2]))
+            self.conn.commit()
+            self.conn.close()
+            db_update()
+            view_products('purchase_orders','null','All',po_tbl)
+
+            self.excel_file = os.getcwd() + "/purchase_orders/" + str(self.year) + "/" + self.new_po_num + ".xlsx"
+            self.wb.save(self.excel_file)
+
+            self.open_ques = messagebox.askquestion("Open the PO Excel File?",
+            "Would you like to open the Purchase Order file in Excel? This will allow you to print it now.")
+            if self.open_ques == "yes":
+                try:
+                    os.system('start EXCEL.EXE ' + self.excel_file)
+                except:
+                    messagebox.showerror("Program Error",
+                    "There was an error finding Excel within the program files.",parent=self)
+            else:
+                pass
+
+            self.destroy()
 
 class Sheet_Label(Label):
     '''Creates a clickable label with link to file in given file location.
@@ -1145,7 +1172,7 @@ po_tbl = Treeview_Table(po_fr,("Date","Product","Amount","Unit","Price","Total",
 po_cfr = Command_Frame(po_fr)
 po_optfr = Option_Frame(po_cfr)
 Logistics_Button(po_optfr,"Create Purchase Order",'purchase_orders',po_tbl,lambda: Purchase_Order(window))
-Logistics_Button(po_optfr,"View Purchase Order",'purchase_orders',po_tbl,None)
+Logistics_Button(po_optfr,"View Purchase Order",'purchase_orders',po_tbl,lambda: po_check(po_tbl))
 Logistics_Button(po_optfr,"Edit Selection",'purchase_orders',po_tbl,None)
 
 po_optfr.pack()
