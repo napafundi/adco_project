@@ -255,9 +255,8 @@ def edit_check(sqlite_table,gui_table,edit_func):
 def po_check(gui_table):
 
     item_values = gui_table.item(gui_table.selection())['values']
-    po_num = item_values[7]
-    print(item_values)
     if item_values:
+        po_num = item_values[7]
         try:
             excel_file = os.getcwd() + "/purchase_orders/" + po_num[:4] + "/" + po_num + ".xlsx"
             os.system('start EXCEL.EXE ' + excel_file)
@@ -266,6 +265,8 @@ def po_check(gui_table):
             "There was an error finding Excel within the program files.",parent=window)
             window.filename = filedialog.askopenfilename(initialdir = os.getcwd() + "/purchase_orders/" + po_num[:4],title = "Select file")
             os.system('start EXCEL.EXE ' + window.filename)
+    else:
+        messagebox.showerror("Selection Error","Please select a purchase order item.")
 def gui_table_sort(gui_table, column, reverse):
     """Sorts gui tables in ascending order based on the column header clicked.
     The next click upon the header will be in reverse order.
@@ -276,7 +277,6 @@ def gui_table_sort(gui_table, column, reverse):
         reverse (bool):Whether or not the sort is in reverse
     """
     l = [(gui_table.set(k, column), k) for k in gui_table.get_children()]
-    print(gui_table.get_children(''))
     l.sort(reverse=reverse)
 
     # rearrange items in sorted positions
@@ -628,7 +628,6 @@ class Production_View(Toplevel):
         self.cur.execute("INSERT INTO 'production' VALUES (?,?,?)", (self.curr_date,self.product_var,self.product_amount))
         #update 'raw_materials' data with subtractions from raw materials values
         for (material,subtr,type) in zip(self.materials,self.entries,self.types):
-            print(material,subtr)
             if material != "None":
                 self.cur.execute("UPDATE 'raw_materials' SET amount=(amount - ?) WHERE product=? AND type=?",(subtr,material,type))
         self.conn.commit()
