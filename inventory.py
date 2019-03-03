@@ -28,6 +28,7 @@ def database():
     cur.execute("UPDATE 'samples' SET total=PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'grain' ('order_number' TEXT, type TEXT, amount INTEGER,price REAL, total TEXT)")
     cur.execute("UPDATE 'grain' SET total=PRINTF('%s%.2f', '$', amount*price)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'mashes' (date DATE, mash_no TEXT, type TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'barrels' ('barrel_number' TEXT, type TEXT,'pg' INTEGER, 'date_filled' DATE, age TEXT,investor TEXT)")
     cur.execute("UPDATE 'barrels' SET age=PRINTF('%d years, %d months',(julianday('now') - julianday(date_filled)) / 365,(julianday('now') - julianday(date_filled)) % 365 / 30)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'purchase_orders' (date DATE,product TEXT, amount INTEGER, unit TEXT, price REAL, total REAL, destination TEXT, 'po_number' TEXT)")
@@ -137,7 +138,33 @@ def grain_edit(sql_edit):
 
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
-    cur.execute("UPDATE 'grain' SET order_number=?,type=?,amount=?,price=?,total=? WHERE order_number=? AND type=? AND amount=? AND price=? AND total=?", sql_edit)
+    cur.execute("UPDATE 'grain' SET order_number=?, type=?, amount=? ,price=?, total=? WHERE order_number=? AND type=? AND amount=? AND price=? AND total=?", sql_edit)
+    conn.commit()
+    conn.close()
+
+def po_edit(sql_edit):
+    """Updates the 'purchase_orders' table with the changes provided by sql_edit.
+
+    Args:
+        sql_edit (tuple):Contains the changes and current values for updating the table row.
+    """
+
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("UPDATE 'purchase_orders' SET date=?, product=?, amount=?, unit=?, price=?, total=?, destination=?, po_number=? WHERE date=? AND product=? AND amount=? AND unit=? AND price=? AND total=? AND destination=? AND po_number=?", sql_edit)
+    conn.commit()
+    conn.close()
+
+def mash_edit(sql_edit):
+    """Updates the 'mashes' table with the changes provided by sql_edit.
+
+    Args:
+        sql_edit (tuple):Contains the changes and current values for updating the table row.
+    """
+
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("UPDATE 'mashes' SET date=?, mash_no=?, type=? WHERE date=? AND mash_no=? AND type=?", sql_edit)
     conn.commit()
     conn.close()
 
@@ -267,6 +294,15 @@ def po_check(gui_table):
             os.system('start EXCEL.EXE ' + window.filename)
     else:
         messagebox.showerror("Selection Error","Please select a purchase order item.")
+
+def finish_check(gui_table):
+
+    item_values = gui_table.item(gui_table.selection())['values']
+    if item_values:
+        Finish_View(window,item_values)
+    else:
+        messagebox.showerror("Selection Error","Please select an item.")
+
 def gui_table_sort(gui_table, column, reverse):
     """Sorts gui tables in ascending order based on the column header clicked.
     The next click upon the header will be in reverse order.
@@ -603,9 +639,9 @@ class Production_View(Toplevel):
         self.materials = [x.get() for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'TCombobox')]    #raw material options
         self.entries = [x.get() for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Entry')]  #raw material entries
         self.types = [x.cget("text").rstrip(":") for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Label' and x.cget("text").find(":") != -1)]  #raw material product types
-        for entry in self.entries:
+        for entry,material in zip(self.entries,self.materials):
             #check material inputs to ensure non-empty values
-            if not entry:
+            if (not entry and material != "None"):
                 messagebox.showerror("Materials Input Error","At least one input within the materials used section is blank, please try again.",parent=self)
                 return
         #check product and case amounts
@@ -618,6 +654,8 @@ class Production_View(Toplevel):
             return
         self.curr_date = date.today()
         #update 'in_progress' table if products checked as unfinished
+        self.conn = sqlite3.Connection("inventory.db")
+        self.cur = self.conn.cursor()
         if self.check_var.get() == 0:
             self.cur.execute("INSERT INTO 'in_progress' VALUES (?,?,?,?)",(self.curr_date,self.product_var,self.product_amount,self.desc_var))
         #update 'bottles' and 'samples' tables if products are considered finished
@@ -629,7 +667,7 @@ class Production_View(Toplevel):
         #update 'raw_materials' data with subtractions from raw materials values
         for (material,subtr,type) in zip(self.materials,self.entries,self.types):
             if material != "None":
-                self.cur.execute("UPDATE 'raw_materials' SET amount=(amount - ?) WHERE product=? AND type=?",(subtr,material,type))
+                self.cur.execute("UPDATE 'raw_materials' SET amount=MAX((amount - ?),0) WHERE product=? AND type=?",(subtr,material,type))
         self.conn.commit()
         self.conn.close()
         db_update()
@@ -721,6 +759,7 @@ class Purchase_Order(Toplevel):
         Label(self.info_fr,text="Pick Up Date:").grid(row=1,column=2,sticky=W)
         Entry(self.info_fr,justify='center').grid(row=0,column=1)
         #search for last purchase order in corresponding year folder
+        #if none exists, create this year's folder
         self.year = datetime.now().year
         try:
             self.files = os.listdir(os.getcwd() + "\\purchase_orders\\" + str(self.year))
@@ -728,6 +767,7 @@ class Purchase_Order(Toplevel):
             os.mkdir(os.getcwd() + "\\purchase_orders\\" + str(self.year))
             self.files = []
         self.po_nums = []
+        #update po-number entry with latest po number
         if self.files:
             for file in self.files:
                 self.mo = poRegex.search(file)
@@ -741,10 +781,10 @@ class Purchase_Order(Toplevel):
         self.po_entry.grid(row=1,column=1)
         Entry(self.info_fr,justify='center').grid(row=2,column=1)
         self.po_date = Entry(self.info_fr,justify='center')
-        self.po_date.insert(END,"mm-dd-yyyy")
+        self.po_date.insert(END,"yyyy-mm-dd")
         self.po_date.grid(row=0,column=3)
         self.pu_date = Entry(self.info_fr,justify='center')
-        self.pu_date.insert(END,"mm-dd-yyyy")
+        self.pu_date.insert(END,"yyyy-mm-dd")
         self.pu_date.grid(row=1,column=3)
         self.info_fr.grid(row=1,column=0,columnspan=2)
 
@@ -772,7 +812,7 @@ class Purchase_Order(Toplevel):
         #button frame
         self.btn_fr = Frame(self)
         Button(self.btn_fr,text="Confirm",command=self.confirm).grid(row=0,column=0,padx=10)
-        Button(self.btn_fr,text="Cancel").grid(row=0,column=1,padx=10)
+        Button(self.btn_fr,text="Cancel",command=lambda: self.destroy()).grid(row=0,column=1,padx=10)
         self.btn_fr.grid(row=3,column=0,columnspan=2,pady=5)
 
         self.total_after()
@@ -875,6 +915,88 @@ class Purchase_Order(Toplevel):
                 pass
 
             self.destroy()
+
+class Finish_View(Toplevel):
+
+    def __init__(self,master,values):
+        self.master = master
+        self.values = values
+        self.x = x + 150
+        self.y = y + 20
+        self.product = self.values[1]
+        Toplevel.__init__(self,master=self.master)
+
+        #title frame
+        self.title_fr = Frame(self)
+        Label(self.title_fr,text="Finish Production",font="Arial 10 bold",pady=5).pack()
+        self.title_fr.grid(row=0,column=0,columnspan=2,pady=5)
+
+        #product frame
+        self.prod_fr = Frame(self)
+        Label(self.prod_fr,text=self.product).grid(row=0,column=0,columnspan=2)
+        Label(self.prod_fr,text="Cases:").grid(row=1,column=0,sticky=W,pady=2)
+        Entry(self.prod_fr,validate="key",validatecommand=(self.register(valid_dig),'%S','%d')).grid(row=1,column=1,pady=2)
+        Label(self.prod_fr,text="Samples:").grid(row=2,column=0,sticky=W,pady=2)
+        Entry(self.prod_fr,validate="key",validatecommand=(self.register(valid_dig),'%S','%d')).grid(row=2,column=1,pady=2)
+        self.prod_fr.grid(row=1,column=0,columnspan=2)
+
+        #button frame
+        self.button_fr = Frame(self)
+        Button(self.button_fr,text="Confirm",command=self.confirm).pack(side=LEFT)
+        Button(self.button_fr,text="Cancel",command=lambda: self.destroy()).pack(side=LEFT)
+        self.button_fr.grid(row=2,column=0,columnspan=2)
+
+        self.title("Finish " + self.product + " Production")
+        self.geometry("%dx%d+%d+%d" % (178,140,self.x,self.y))
+        self.resizable(0,0)
+        self.focus()
+
+    def confirm(self):
+        self.conf_quest = messagebox.askquestion("Finish this product?",
+        "Are you sure you want to confirm? Make sure everything is entered correctly before continuing.",parent=self)
+        if self.conf_quest == "yes":
+            self.entries = [x.get() for x in reversed(self.prod_fr.grid_slaves()) if x.winfo_class() == "Entry"]
+            if all(self.entries):
+                self.conn = sqlite3.Connection("inventory.db")
+                self.cur = self.conn.cursor()
+                self.cur.execute("UPDATE 'bottles' SET amount=(amount + ?) WHERE product=?",(self.entries[0],self.product))
+                self.cur.execute("UPDATE 'samples' SET amount=(amount + ?) WHERE product=?",(self.entries[1],self.product))
+                self.cur.execute("DELETE FROM 'in_progress' WHERE product=?",(self.product,))
+                self.conn.commit()
+                self.conn.close()
+                db_update()
+                view_products('in_progress','null','All',inprog_tbl)
+                self.destroy()
+            else:
+                messagebox.showerror("Input Error",
+                "Please make sure all of the information entries have values.",parent=self)
+                return
+        else:
+            return
+
+class Grain_View(Toplevel):
+
+    def __init__(self,master,gui_table):
+        self.master = master
+        self.gui_table = gui_table
+        self.x = x
+        self.y = y
+        Toplevel.__init__(self,master=self.master)
+
+        #title frame
+        self.title_fr = Frame(self)
+        Label(self.title_fr,text="Mash Production",font="Arial 10 bold",pady=5).pack()
+        self.title_fr.grid(row=0,column=0,columnspan=2)
+
+        #info frame
+        self.info_fr = Frame(self)
+
+        self.info_fr.grid(row=1,column=0,columnspan=2)
+
+        self.title("Mash Production")
+        self.geometry("%dx%d+%d+%d" % (178,140,self.x,self.y))
+        self.resizable(0,0)
+        self.focus()
 
 class Sheet_Label(Label):
     '''Creates a clickable label with link to file in given file location.
@@ -992,6 +1114,7 @@ fileRegex = re.compile(r'''
     (.)
     ([a-zA-Z_0-9])''',re.VERBOSE)
 
+#used to search for the the po-number in purchase order file names
 poRegex = re.compile(r'''
     ([a-zA-Z0-9_]+)
     (-)
@@ -999,6 +1122,7 @@ poRegex = re.compile(r'''
     (.)
     ([a-zA-Z_0-9]+)''',re.VERBOSE)
 
+#entry validation used to ensure only digits
 def valid_dig(str,act):
 
     if act == '0':
@@ -1006,6 +1130,7 @@ def valid_dig(str,act):
     else:
         return str.isdigit()
 
+#entry validation used to ensure only decimal numbers
 def valid_dec(str,cur_str,act):
 
     if act == '0':
@@ -1065,7 +1190,9 @@ prod_fr = ttk.Frame(bottinv_nb)
 inprog_fr = ttk.Frame(bottinv_nb)
 bott_fr = ttk.Frame(bottinv_nb)
 samp_fr = ttk.Frame(bottinv_nb)
+
 bottinv_nb.add(raw_fr, text="Raw Materials",padding=10)
+raw_fr.bind('<Visibility>',lambda event: view_products('raw_materials','null','All',raw_tbl))
 
 bottinv_nb.add(prod_fr, text="Production Log",padding=10)
 prod_fr.bind('<Visibility>',lambda event: view_products('production','null','All',prod_tbl))
@@ -1082,9 +1209,6 @@ samp_fr.bind('<Visibility>',lambda event: view_products('samples','null','All',s
 bottinv_nb.pack(side=BOTTOM,fill=BOTH,expand=1)
 
 raw_tbl = Treeview_Table(raw_fr,("Type","Product","Amount","Price","Total"))
-
-#show table upon opening application
-view_products('raw_materials','null','All',raw_tbl)
 
 #create raw materials command frame and populate with view and options buttons
 raw_cfr = Command_Frame(raw_fr)
@@ -1109,8 +1233,9 @@ prod_cfr.pack(padx=10)
 inprog_tbl = Treeview_Table(inprog_fr,("Date","Product","Amount","Description"))
 inprog_cfr = Command_Frame(inprog_fr)
 inprog_optfr = Option_Frame(inprog_cfr)
+Logistics_Button(inprog_optfr,"Finish Selection",'in_progress',inprog_tbl,lambda: finish_check(inprog_tbl))
 Logistics_Button(inprog_optfr,"Edit Selection",'in_progress',inprog_tbl,lambda: edit_check('in_progress',inprog_tbl,in_progress_edit))
-inprog_optfr.pack(padx=10)
+inprog_optfr.pack()
 inprog_cfr.pack(padx=10)
 
 #
@@ -1139,16 +1264,27 @@ samp_cfr.pack(padx=10)
 grain_nb = ttk.Notebook(window, height=height, width=width)
 grain_fr = ttk.Frame(grain_nb)
 grain_nb.add(grain_fr, text="Grain Inventory", padding=10)
-grain_table = Treeview_Table(grain_fr,("Order No","Type","Amount","Price","Total"))
+mash_fr = ttk.Frame(grain_nb)
+grain_nb.add(mash_fr, text="Mash Log", padding=10)
+
+grain_tbl = Treeview_Table(grain_fr,("Order No","Type","Amount","Price","Total"))
 grain_cfr = Command_Frame(grain_fr)
 grain_optfr = Option_Frame(grain_cfr)
-Logistics_Button(grain_optfr,"Produce Mash",'grain',grain_table,None)
-Logistics_Button(grain_optfr,"Mash Production Sheet",'grain',grain_table,None)
-Logistics_Button(grain_optfr,"Add Grain",'grain',grain_table,lambda: Add_View(window,'grain',grain_table,1))
-Logistics_Button(grain_optfr,"Edit Selection",'grain',grain_table, lambda: edit_check('grain',grain_table,grain_edit))
+Logistics_Button(grain_optfr,"Produce Mash",'grain',grain_tbl,command=lambda: Grain_View(window,grain_tbl))
+Logistics_Button(grain_optfr,"Mash Production Sheet",'grain',grain_tbl,None)
+Logistics_Button(grain_optfr,"Add Grain",'grain',grain_tbl,lambda: Add_View(window,'grain',grain_tbl,1))
+Logistics_Button(grain_optfr,"Edit Selection",'grain',grain_tbl, lambda: edit_check('grain',grain_tbl,grain_edit))
 Total_Label('grain',grain_cfr)
 grain_optfr.pack()
 grain_cfr.pack(padx=10)
+
+mash_tbl = Treeview_Table(mash_fr,("Date","Mash No.","Type"))
+mash_cfr = Command_Frame(mash_fr)
+mash_vfr = View_Frame(mash_cfr,'mashes',mash_tbl,["Bourbon","Rye","Malt","Other","All"])
+mash_optfr = Option_Frame(mash_cfr)
+Logistics_Button(mash_optfr,"Edit Selection",'mashes',mash_tbl, lambda: edit_check('mashes',mash_tbl,mash_edit))
+mash_optfr.pack()
+mash_cfr.pack(padx=10)
 
 #create barrel inventory notebook and populates with tabbed frames
 barr_nb = ttk.Notebook(window, height=height, width=width)
@@ -1172,7 +1308,7 @@ po_cfr = Command_Frame(po_fr)
 po_optfr = Option_Frame(po_cfr)
 Logistics_Button(po_optfr,"Create Purchase Order",'purchase_orders',po_tbl,lambda: Purchase_Order(window))
 Logistics_Button(po_optfr,"View Purchase Order",'purchase_orders',po_tbl,lambda: po_check(po_tbl))
-Logistics_Button(po_optfr,"Edit Selection",'purchase_orders',po_tbl,None)
+Logistics_Button(po_optfr,"Edit Selection",'purchase_orders',po_tbl,lambda: edit_check('purchase_orders',po_tbl,po_edit))
 
 po_optfr.pack()
 po_cfr.pack(padx=10)
@@ -1194,7 +1330,7 @@ menubar = Menu(window)
 
 menu1 = Menu(menubar, tearoff=0)
 menu1.add_command(label="Raw Materials and Bottles", command=lambda: view_widget(window,bottinv_nb,BOTTOM,'raw_materials','null','All',raw_tbl))
-menu1.add_command(label="Grain", command=lambda: view_widget(window,grain_nb,BOTTOM,'grain','null','All',grain_table))
+menu1.add_command(label="Grain", command=lambda: view_widget(window,grain_nb,BOTTOM,'grain','null','All',grain_tbl))
 menu1.add_command(label="Barrels", command=lambda: view_widget(window,barr_nb,BOTTOM,'barrels','null','All',barr_tbl))
 menubar.add_cascade(label="Inventory", menu=menu1)
 
