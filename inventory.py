@@ -989,14 +989,45 @@ class Grain_View(Toplevel):
         self.title_fr.grid(row=0,column=0,columnspan=2)
 
         #info frame
-        self.info_fr = Frame(self)
+        self.type_fr = Frame(self)
+        Label(self.type_fr,text="Mash Type:").grid(row=0,column=0)
+        self.type_menu = ttk.Combobox(self.type_fr,values=["Bourbon","Rye","Malt","Rum"],width=15,justify="center",state="readonly")
+        self.type_menu.set("Bourbon")
+        self.type_menu.bind("<<ComboboxSelected>>", self.tplvl_upd)
+        self.type_menu.grid(row=0,column=1)
+        self.type_fr.grid(row=1,column=0,columnspan=2)
 
-        self.info_fr.grid(row=1,column=0,columnspan=2)
+        #grain frame
+        self.grain_fr = Frame(self,pady=10,padx=10)
+        self.type_menu.event_generate("<<ComboboxSelected>>")
 
         self.title("Mash Production")
-        self.geometry("%dx%d+%d+%d" % (178,140,self.x,self.y))
+        self.geometry("%dx%d+%d+%d" % (220,140,self.x,self.y))
         self.resizable(0,0)
         self.focus()
+
+    def tplvl_upd(self,event):
+
+        self.type = self.type_menu.get()
+        for widg in self.grain_fr.grid_slaves():
+            widg.grid_forget()
+        Label(self.grain_fr,text="Grain")
+        if self.type == "Bourbon":
+            for index,grain in enumerate(["Corn","Rye","Malted Barley"],1):
+                Label(self.grain_fr,text=grain).grid(row=index,column=0)
+                Entry(self.grain_fr).grid(row=index,column=1)
+        elif self.type == "Rye":
+            for index,grain in enumerate(["Rye","Malted Wheat"],1):
+                Label(self.grain_fr,text=grain).grid(row=index,column=0)
+                Entry(self.grain_fr).grid(row=index,column=1)
+        elif self.type == "Malt":
+            for index,grain in enumerate(["Malted Barley","Wheat","Oat"],1):
+                Label(self.grain_fr,text=grain).grid(row=index,column=0)
+                Entry(self.grain_fr).grid(row=index,column=1)
+        elif self.type == "Rum":
+            Label(self.grain_fr,text="N/A").grid(row=1,column=0,columnspan=2)
+        self.grain_fr.grid(row=2,column=0,columnspan=2)
+
 
 class Sheet_Label(Label):
     '''Creates a clickable label with link to file in given file location.
