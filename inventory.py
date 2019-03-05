@@ -979,8 +979,8 @@ class Grain_View(Toplevel):
     def __init__(self,master,gui_table):
         self.master = master
         self.gui_table = gui_table
-        self.x = x
-        self.y = y
+        self.x = x + 150
+        self.y = y + 150
         Toplevel.__init__(self,master=self.master)
 
         #title frame
@@ -998,20 +998,26 @@ class Grain_View(Toplevel):
         self.type_fr.grid(row=1,column=0,columnspan=2)
 
         #grain frame
-        self.grain_fr = Frame(self,pady=10,padx=10)
+        self.grain_fr = Frame(self,pady=5,padx=10)
         self.type_menu.event_generate("<<ComboboxSelected>>")
 
+        #button frame
+        self.button_fr = Frame(self,padx=10)
+        Button(self.button_fr,text="Confirm",command=self.confirm).grid(row=0,column=0)
+        Button(self.button_fr,text="Cancel",command=lambda: self.destroy()).grid(row=0,column=1)
+        self.button_fr.grid(row=3,column=0,columnspan=2)
+
         self.title("Mash Production")
-        self.geometry("%dx%d+%d+%d" % (220,140,self.x,self.y))
+        self.geometry("%dx%d+%d+%d" % (220,180,self.x,self.y))
         self.resizable(0,0)
         self.focus()
 
     def tplvl_upd(self,event):
-
+        #remove grain inputs and replace with new ones corresponding to grain type
         self.type = self.type_menu.get()
         for widg in self.grain_fr.grid_slaves():
             widg.grid_forget()
-        Label(self.grain_fr,text="Grain")
+        Label(self.grain_fr,text="Grain",font="Arial 10 bold").grid(row=0,column=0,columnspan=2)
         if self.type == "Bourbon":
             for index,grain in enumerate(["Corn","Rye","Malted Barley"],1):
                 Label(self.grain_fr,text=grain).grid(row=index,column=0)
@@ -1025,8 +1031,27 @@ class Grain_View(Toplevel):
                 Label(self.grain_fr,text=grain).grid(row=index,column=0)
                 Entry(self.grain_fr).grid(row=index,column=1)
         elif self.type == "Rum":
-            Label(self.grain_fr,text="N/A").grid(row=1,column=0,columnspan=2)
+            Label(self.grain_fr,text="N/A",width=10).grid(row=1,column=0)
+            Entry(self.grain_fr,state="readonly").grid(row=1,column=1)
         self.grain_fr.grid(row=2,column=0,columnspan=2)
+
+    def confirm(self):
+
+        self.grain_types = [x.cget("text") for x in reversed(self.grain_fr.grid_slaves()) if x.winfo_class() == "Label"][1:]    #labels except title label
+        self.grain_entries = [x.get() for x in reversed(self.grain_fr.grid_slaves()) if x.winfo_class() == "Entry"] #grain amt entries
+
+        #subtract grain amounts from inventory
+        #subtract from lowest grain amount first, then remove that data from table
+        #and continue through next value
+        self.conn = sqlite3.Connection("inventory.db")
+        self.cur = self.conn.cursor()
+
+        for type,entry in zip(self.grain_types,self.grain_entries):
+            try:
+                self.cur.execute("SELECT MIN(amount) FROM grain WHERE type=?",(type,))
+                print(list(self.cur)[0][0])
+            except:
+                print("No grain value found")
 
 
 class Sheet_Label(Label):
