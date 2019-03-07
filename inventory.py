@@ -10,6 +10,7 @@ from datetime import datetime,date
 import math
 import openpyxl
 from openpyxl.styles import Font
+import string
 
 def database():
     """Create inventory database if it does not exist. Update certain values within
@@ -368,7 +369,7 @@ class Add_View(Toplevel):
         self.title_frame.grid(row=0,column=0,columnspan=2,pady=5)
         for index,description in enumerate(self.gui_table.columns,1):
             if (description.lower() != 'type'):
-                Label(self,text=description + ":").grid(row=index,column=0,sticky=W)
+                Label(self,text=description + ":").grid(row=index,column=0)
                 if description.lower() == 'total':
                     self.total_text = StringVar()
                     self.total_entry = Entry(self,textvariable=self.total_text)
@@ -403,7 +404,7 @@ class Add_View(Toplevel):
                             self.price_entry = self.grid_slaves(row=self.price_row,column=self.entry_col)[0]
                     self.total_after()
             else:   #handle type case
-                Label(self,text=description + ":").grid(row=index,column=0,sticky=W)
+                Label(self,text=description + ":").grid(row=index,column=0)
                 self.options = ttk.Combobox(self,values = type_options[sqlite_table])
                 self.options.set(type_options[sqlite_table][0])
                 self.options.config(width=16, background="white", justify='center', state='readonly')
@@ -976,12 +977,26 @@ class Finish_View(Toplevel):
 
 class Grain_View(Toplevel):
 
-    def __init__(self,master,gui_table):
+    def __init__(self,master,mash_table):
         self.master = master
-        self.gui_table = gui_table
+        self.mash_table = mash_table
         self.x = x + 150
         self.y = y + 150
         Toplevel.__init__(self,master=self.master)
+        #get previous mash information
+        self.conn = sqlite3.Connection("inventory.db")
+        self.cur = self.conn.cursor()
+        self.cur.execute("SELECT mash_no,type FROM mashes ORDER BY date DESC LIMIT 1")
+        self.prev_mash = list(self.cur)[0]
+        self.prev_mash_num = self.prev_mash[0]
+        self.prev_mash_type = self.prev_mash[1]
+        self.conn.close()
+        #mash number regex matches
+        self.mo = mashRegex.search(self.prev_mash_num)
+        self.year = self.mo.group(1)
+        self.mash_count = self.mo.group(5)
+        self.mash_letter = self.mo.group(6)
+        self.mash_letters = list(string.ascii_uppercase[:8])
 
         #title frame
         self.title_fr = Frame(self)
@@ -991,10 +1006,13 @@ class Grain_View(Toplevel):
         #info frame
         self.type_fr = Frame(self)
         Label(self.type_fr,text="Mash Type:").grid(row=0,column=0)
-        self.type_menu = ttk.Combobox(self.type_fr,values=["Bourbon","Rye","Malt","Rum"],width=15,justify="center",state="readonly")
+        self.type_menu = ttk.Combobox(self.type_fr,values=["Bourbon","Rye","Malt","Rum"],width=16,justify="center",state="readonly")
         self.type_menu.set("Bourbon")
         self.type_menu.bind("<<ComboboxSelected>>", self.tplvl_upd)
         self.type_menu.grid(row=0,column=1)
+        Label(self.type_fr,text="Mash Number:").grid(row=1,column=0)
+        self.mash_num_entry = Entry(self.type_fr)
+        self.mash_num_entry.grid(row=1,column=1)
         self.type_fr.grid(row=1,column=0,columnspan=2)
 
         #grain frame
@@ -1008,13 +1026,31 @@ class Grain_View(Toplevel):
         self.button_fr.grid(row=3,column=0,columnspan=2)
 
         self.title("Mash Production")
-        self.geometry("%dx%d+%d+%d" % (220,180,self.x,self.y))
+        self.geometry("%dx%d+%d+%d" % (220,200,self.x,self.y))
         self.resizable(0,0)
         self.focus()
 
+    def mash_num_upd(self,prev_type,curr_type):
+        self.mash_num_entry.delete(0,END)
+        self.new_batch_num = self.year + "/" + '{:02d}'.format(datetime.now().month) + "-" + str(int(self.mash_count) + 1) + "A"
+        #handle new year case
+        if int(self.year) != int(datetime.now().year):
+            self.mash_num_entry.insert(0,self.year + "/1-1A")
+        else:
+            if prev_type == curr_type:
+                if self.mash_letter != "H": #same type, same batch case
+                    self.mash_let_indx = self.mash_letters.index(self.mash_letter) + 1
+                    self.mash_num_entry.insert(0,self.year + "/" + '{:02d}'.format(datetime.now().month) + "-" + self.mash_count + self.mash_letters[self.mash_let_indx])
+                else:   #same type, next batch case
+                    self.mash_num_entry.insert(0,self.new_batch_num)
+            else:   #new type, new batch case
+                self.mash_num_entry.insert(0,self.new_batch_num)
+
     def tplvl_upd(self,event):
         #remove grain inputs and replace with new ones corresponding to grain type
+        #update mash number based on previous and current mash types
         self.type = self.type_menu.get()
+        self.mash_num_upd(self.prev_mash_type,self.type)
         for widg in self.grain_fr.grid_slaves():
             widg.grid_forget()
         Label(self.grain_fr,text="Grain",font="Arial 10 bold").grid(row=0,column=0,columnspan=2)
@@ -1041,17 +1077,37 @@ class Grain_View(Toplevel):
         self.grain_entries = [x.get() for x in reversed(self.grain_fr.grid_slaves()) if x.winfo_class() == "Entry"] #grain amt entries
 
         #subtract grain amounts from inventory
-        #subtract from lowest grain amount first, then remove that data from table
+        #subtract from lowest grain amount first, then remove that data from table when = 0
         #and continue through next value
         self.conn = sqlite3.Connection("inventory.db")
         self.cur = self.conn.cursor()
 
-        for type,entry in zip(self.grain_types,self.grain_entries):
-            try:
-                self.cur.execute("SELECT MIN(amount) FROM grain WHERE type=?",(type,))
-                print(list(self.cur)[0][0])
-            except:
-                print("No grain value found")
+        for type,amount in zip(self.grain_types,self.grain_entries):
+            self.grain_recur(type,amount)
+
+        self.conn.commit()
+        self.conn.close()
+        db_update()
+        view_products('grain','null','All',grain_tbl)
+        self.destroy()
+
+    def grain_recur(self,type,amount):
+        self.cur.execute("SELECT MIN(amount) FROM grain WHERE type=?",(type,))
+        self.grain_amt = list(self.cur)[0][0]
+
+        if self.grain_amt:
+            self.grain_diff = int(self.grain_amt) - int(amount)
+            if self.grain_diff >= 0:
+                self.cur.execute("UPDATE grain SET amount=? WHERE type=? AND amount=?",(self.grain_diff,type,self.grain_amt))
+            else:
+                self.cur.execute("DELETE FROM grain WHERE type=? AND amount=?",(type,self.grain_amt))
+                self.grain_diff = abs(self.grain_diff)
+                self.grain_recur(type,self.grain_diff)
+        else:
+            messagebox.showerror("Grain Error",
+            "There doesn't seem to be an inventory value for " +
+            type + ", or there isn't enough grain, please fix this and try again.",parent=self)
+            raise ValueError("Grain Error")
 
 
 class Sheet_Label(Label):
@@ -1178,6 +1234,14 @@ poRegex = re.compile(r'''
     (.)
     ([a-zA-Z_0-9]+)''',re.VERBOSE)
 
+mashRegex = re.compile(r'''
+    (^\d{4})
+    (/)
+    (\d{1})
+    (-)
+    (\d{1})
+    ([a-zA-Z]{1})''',re.VERBOSE)
+
 #entry validation used to ensure only digits
 def valid_dig(str,act):
 
@@ -1199,7 +1263,7 @@ def valid_dec(str,cur_str,act):
         return str.isdigit()
 
 #option values for dropdown menus
-type_options = {'raw_materials': ['Bottles','Boxes','Caps','Capsules','Labels'], 'bottles': ['Vodka','Whiskey','Rum','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other'], 'grain': ['Corn','Rye','Malted Barley','Malted Wheat','Oat'], 'samples':['Vodka','Whiskey','Rum','Other']}
+type_options = {'raw_materials': ['Bottles','Boxes','Caps','Capsules','Labels'], 'bottles': ['Vodka','Whiskey','Rum','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other'], 'grain': ['Corn','Rye','Malted Barley','Malted Wheat','Oat'], 'samples':['Vodka','Whiskey','Rum','Other'], 'mashes': ['Bourbon','Rye','Malt','Rum','Other']}
 
 #create root window, resize based on user's screen info
 window = Tk()
@@ -1320,13 +1384,15 @@ samp_cfr.pack(padx=10)
 grain_nb = ttk.Notebook(window, height=height, width=width)
 grain_fr = ttk.Frame(grain_nb)
 grain_nb.add(grain_fr, text="Grain Inventory", padding=10)
+grain_fr.bind('<Visibility>',lambda event: view_products('grain','null','All',grain_tbl))
 mash_fr = ttk.Frame(grain_nb)
 grain_nb.add(mash_fr, text="Mash Log", padding=10)
+mash_fr.bind('<Visibility>',lambda event: view_products('mashes','null','All',mash_tbl))
 
 grain_tbl = Treeview_Table(grain_fr,("Order No","Type","Amount","Price","Total"))
 grain_cfr = Command_Frame(grain_fr)
 grain_optfr = Option_Frame(grain_cfr)
-Logistics_Button(grain_optfr,"Produce Mash",'grain',grain_tbl,command=lambda: Grain_View(window,grain_tbl))
+Logistics_Button(grain_optfr,"Produce Mash",'grain',grain_tbl,command=lambda: Grain_View(window,mash_tbl))
 Logistics_Button(grain_optfr,"Mash Production Sheet",'grain',grain_tbl,None)
 Logistics_Button(grain_optfr,"Add Grain",'grain',grain_tbl,lambda: Add_View(window,'grain',grain_tbl,1))
 Logistics_Button(grain_optfr,"Edit Selection",'grain',grain_tbl, lambda: edit_check('grain',grain_tbl,grain_edit))
@@ -1338,6 +1404,7 @@ mash_tbl = Treeview_Table(mash_fr,("Date","Mash No.","Type"))
 mash_cfr = Command_Frame(mash_fr)
 mash_vfr = View_Frame(mash_cfr,'mashes',mash_tbl,["Bourbon","Rye","Malt","Other","All"])
 mash_optfr = Option_Frame(mash_cfr)
+Logistics_Button(mash_optfr,"Add Mash",'mashes',mash_tbl,lambda: Add_View(window,"mashes",mash_tbl,1))
 Logistics_Button(mash_optfr,"Edit Selection",'mashes',mash_tbl, lambda: edit_check('mashes',mash_tbl,mash_edit))
 mash_optfr.pack()
 mash_cfr.pack(padx=10)
