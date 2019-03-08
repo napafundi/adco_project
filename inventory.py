@@ -993,15 +993,15 @@ class Grain_View(Toplevel):
         self.conn.close()
         #mash number regex matches
         self.mo = mashRegex.search(self.prev_mash_num)
-        self.year = self.mo.group(1)
-        self.mash_count = self.mo.group(5)
-        self.mash_letter = self.mo.group(6)
-        self.mash_letters = list(string.ascii_uppercase[:8])
+        self.year = self.mo.group(1)    #prev mash's year
+        self.mash_count = self.mo.group(5)  #prev mash's ID number
+        self.mash_letter = self.mo.group(6) #prev mash's letter variable
+        self.mash_letters = list(string.ascii_uppercase[:8])    #letters A-H
 
         #title frame
         self.title_fr = Frame(self)
         Label(self.title_fr,text="Mash Production",font="Arial 10 bold",pady=5).pack()
-        self.title_fr.grid(row=0,column=0,columnspan=2)
+        self.title_fr.grid(row=0,column=0,columnspan=3)
 
         #info frame
         self.type_fr = Frame(self)
@@ -1011,24 +1011,53 @@ class Grain_View(Toplevel):
         self.type_menu.bind("<<ComboboxSelected>>", self.tplvl_upd)
         self.type_menu.grid(row=0,column=1)
         Label(self.type_fr,text="Mash Number:").grid(row=1,column=0)
-        self.mash_num_entry = Entry(self.type_fr)
+        self.mash_num_entry = Entry(self.type_fr,justify='center')
         self.mash_num_entry.grid(row=1,column=1)
-        self.type_fr.grid(row=1,column=0,columnspan=2)
+        Label(self.type_fr,text="Date:").grid(row=2,column=0)
+        self.date_entry = Entry(self.type_fr,state="readonly",justify="center")
+        self.date_entry.grid(row=2,column=1)
+        self.image = Image.open("calendar.png")
+        self.image = self.image.resize((22,22))
+        self.photo = ImageTk.PhotoImage(self.image)
+        self.cal_link = Button(self.type_fr, image=self.photo, command = self.cal_button)
+        self.cal_link.image = self.photo
+        self.cal_link.grid(row=2,column=2)
+        self.type_fr.grid(row=1,column=0,columnspan=3)
 
         #grain frame
-        self.grain_fr = Frame(self,pady=5,padx=10)
+        self.grain_fr = Frame(self,pady=5,padx=10,height=100,width=240)
+        self.grain_fr.grid_propagate(0)
         self.type_menu.event_generate("<<ComboboxSelected>>")
 
         #button frame
         self.button_fr = Frame(self,padx=10)
         Button(self.button_fr,text="Confirm",command=self.confirm).grid(row=0,column=0)
         Button(self.button_fr,text="Cancel",command=lambda: self.destroy()).grid(row=0,column=1)
-        self.button_fr.grid(row=3,column=0,columnspan=2)
+        self.button_fr.grid(row=3,column=0,columnspan=3)
 
         self.title("Mash Production")
-        self.geometry("%dx%d+%d+%d" % (220,200,self.x,self.y))
+        self.geometry("%dx%d+%d+%d" % (240,240,self.x,self.y))
         self.resizable(0,0)
         self.focus()
+
+    def cal_button(self):
+        """Creates a toplevel window to provide a calendar date selection tool.
+        """
+
+        self.top = Toplevel(window)
+        self.cal = Calendar(self.top, font="Arial 14", selectmode='day', locale='en_US',
+                       cursor="hand2")
+        self.cal.pack(fill="both", expand=True)
+        def retrieve_date():
+            """Updates the date-entry widget within the toplevel widget.
+            """
+            self.date_entry.config(state=NORMAL)
+            self.date_entry.delete(0,END)
+            self.date_entry.insert(END,self.cal.selection_get().strftime("%Y-%m-%d"))
+            self.date_entry.config(state="readonly")
+            self.top.destroy()
+        Button(self.top, text="ok", command = retrieve_date).pack()
+        self.top.focus()
 
     def mash_num_upd(self,prev_type,curr_type):
         self.mash_num_entry.delete(0,END)
@@ -1040,7 +1069,8 @@ class Grain_View(Toplevel):
             if prev_type == curr_type:
                 if self.mash_letter != "H": #same type, same batch case
                     self.mash_let_indx = self.mash_letters.index(self.mash_letter) + 1
-                    self.mash_num_entry.insert(0,self.year + "/" + '{:02d}'.format(datetime.now().month) + "-" + self.mash_count + self.mash_letters[self.mash_let_indx])
+                    self.new_batch_num = self.year + "/" + '{:02d}'.format(datetime.now().month) + "-" + self.mash_count + self.mash_letters[self.mash_let_indx]
+                    self.mash_num_entry.insert(0,self.new_batch_num)
                 else:   #same type, next batch case
                     self.mash_num_entry.insert(0,self.new_batch_num)
             else:   #new type, new batch case
@@ -1071,6 +1101,7 @@ class Grain_View(Toplevel):
             Entry(self.grain_fr,state="readonly").grid(row=1,column=1)
         self.grain_fr.grid(row=2,column=0,columnspan=2)
 
+
     def confirm(self):
 
         self.grain_types = [x.cget("text") for x in reversed(self.grain_fr.grid_slaves()) if x.winfo_class() == "Label"][1:]    #labels except title label
@@ -1084,6 +1115,9 @@ class Grain_View(Toplevel):
 
         for type,amount in zip(self.grain_types,self.grain_entries):
             self.grain_recur(type,amount)
+
+        #self.cur.execute("INSERT INTO mashes VALUES (?,?,?)",
+        #())
 
         self.conn.commit()
         self.conn.close()
