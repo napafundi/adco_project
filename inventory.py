@@ -13,10 +13,8 @@ from openpyxl.styles import Font
 import string
 
 def database():
-    """Create inventory database if it does not exist. Update certain values within
-    the database.
-    """
-
+    #Create inventory database if it does not exist. Update certain values within
+    #the database.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("CREATE TABLE IF NOT EXISTS 'raw_materials' (type TEXT, product TEXT, amount INTEGER, price REAL, total TEXT)")
@@ -38,10 +36,8 @@ def database():
     conn.close()
 
 def db_update():
-    """Updates inventory database values for "total" column in raw_materials,bottles,
-    and grain tables. Updates "age" values for the barrels table.
-    """
-
+    #Updates inventory database values for "total" column in raw_materials,bottles,
+    #and grain tables. Updates "age" values for the barrels table.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'raw_materials' SET total=PRINTF('%s%g', '$', amount*price)")
@@ -53,12 +49,7 @@ def db_update():
     conn.close()
 
 def raw_edit(sql_edit):
-    """Updates the 'raw_materials' table with the changes provided by sql_edit.
-
-    Args:
-        sql_edit (tuple):Contains the changes and current values for updating the table row.
-    """
-
+    #Updates the 'raw_materials' table with the changes provided by sql_edit.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'raw_materials' SET type=?,product=?,amount=?,price=?,total=? WHERE type=? AND product=? AND amount=? AND price=? AND total=?", sql_edit)
@@ -66,12 +57,7 @@ def raw_edit(sql_edit):
     conn.close()
 
 def production_edit(sql_edit):
-    """Updates the 'production' table with changes provided by sql_edit.
-
-    Args:
-        sql_edit (tuple):Contains the changes and current values for updating the table row
-    """
-
+    #Updates the 'production' table with changes provided by sql_edit.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'production' SET date=?, product=?, amount=? WHERE date=? AND product=? AND amount=?", sql_edit)
@@ -79,12 +65,7 @@ def production_edit(sql_edit):
     conn.close()
 
 def in_progress_edit(sql_edit):
-    """Updates the 'in_progress' table with changes provided by sql_edit.
-
-    Args:
-        sql_edit (tuple):Contains the changes and current values for updating the table row
-    """
-
+    #Updates the 'in_progress' table with changes provided by sql_edit.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'in_progress' SET date=?, product=?, amount=?, description=? WHERE date=? AND product=? AND amount=? AND description=?", sql_edit)
@@ -92,12 +73,7 @@ def in_progress_edit(sql_edit):
     conn.close()
 
 def bottles_edit(sql_edit):
-    """Updates 'bottles' table with changes provided by sql_edit.
-
-    Args:
-        sql_edit (tuple):Contains the changes and current values for updating the table row
-    """
-
+    #Updates 'bottles' table with changes provided by sql_edit.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'bottles' SET type=?, product=?, amount=?, case_size=?, price=?, total=? WHERE type=? AND product=? AND amount=? AND case_size=? AND price=? AND total=?", sql_edit)
@@ -105,12 +81,7 @@ def bottles_edit(sql_edit):
     conn.close()
 
 def sample_edit(sql_edit):
-    """Updates 'samples' table with changes provided by sql_edit.
-
-    Args:
-        sql_edit (tuple):Contains the changes and current values for updating the table row
-    """
-
+    #Updates 'samples' table with changes provided by sql_edit.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'samples' SET type=?, product=?, amount=?, price=?, total=? WHERE type=? AND product=? AND amount=? AND price=? AND total=?", sql_edit)
@@ -118,12 +89,7 @@ def sample_edit(sql_edit):
     conn.close()
 
 def barrel_edit(sql_edit):
-    """Updates the 'barrels' table with the changes provided by sql_edit.
-
-    Args:
-        sql_edit (tuple):Contains the changes and current values for updating the table row.
-    """
-
+    #Updates the 'barrels' table with the changes provided by sql_edit.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'barrels' SET barrel_number=?, type=?, pg=?, date_filled=?, age=?, investor=? WHERE barrel_number=? AND type=? AND pg=? AND date_filled=? AND age=? AND investor=?", sql_edit)
@@ -131,12 +97,7 @@ def barrel_edit(sql_edit):
     conn.close()
 
 def grain_edit(sql_edit):
-    """Updates the 'grain' table with the changes provided by sql_edit.
-
-    Args:
-        sql_edit (tuple):Contains the changes and current values for updating the table row.
-    """
-
+    #Updates the 'grain' table with the changes provided by sql_edit.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'grain' SET order_number=?, type=?, amount=? ,price=?, total=? WHERE order_number=? AND type=? AND amount=? AND price=? AND total=?", sql_edit)
@@ -144,12 +105,7 @@ def grain_edit(sql_edit):
     conn.close()
 
 def po_edit(sql_edit):
-    """Updates the 'purchase_orders' table with the changes provided by sql_edit.
-
-    Args:
-        sql_edit (tuple):Contains the changes and current values for updating the table row.
-    """
-
+    #Updates the 'purchase_orders' table with the changes provided by sql_edit.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'purchase_orders' SET date=?, product=?, amount=?, unit=?, price=?, total=?, destination=?, po_number=? WHERE date=? AND product=? AND amount=? AND unit=? AND price=? AND total=? AND destination=? AND po_number=?", sql_edit)
@@ -157,12 +113,7 @@ def po_edit(sql_edit):
     conn.close()
 
 def mash_edit(sql_edit):
-    """Updates the 'mashes' table with the changes provided by sql_edit.
-
-    Args:
-        sql_edit (tuple):Contains the changes and current values for updating the table row.
-    """
-
+    #Updates the 'mashes' table with the changes provided by sql_edit.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'mashes' SET date=?, mash_no=?, type=? WHERE date=? AND mash_no=? AND type=?", sql_edit)
@@ -170,37 +121,15 @@ def mash_edit(sql_edit):
     conn.close()
 
 def view_widget(window,widget,location,sqlite_table,column,item,gui_table):
-    """Removes current packed widgets from window frame and replaces with new widget
-    chosen.
-
-    Args:
-        window (Tk root object):Master window to remove widgets from
-        widget (Tk widget object):Widget to be displayed
-        location (str):Position to pack new widget
-        sqlite_table (sqlite table):Table to display information from
-        column (str):Column to which the 'item' filter is applied
-        item (str):Item which is filtered for
-        gui_table (Tk treeview object):Table where info will be displayed
-    Returns:
-        view_products(sqlite_table,column,item,gui_table)
-    """
-
+    #Removes current packed widgets from window frame and replaces with new widget chosen.
     for widg in window.pack_slaves():
         widg.pack_forget()
     widget.pack(side=location, fill=BOTH, expand=1)
     view_products(sqlite_table,column,item,gui_table)
 
 def view_products(sqlite_table,column,item,gui_table):
-    """Fetches info from sqlite_table based on an item filter. Returns information
-    into the current gui_table.Configures even-numbered rows to have a grey background.
-
-    Args:
-        sqlite_table(str):Sqlite table to fetch data from.
-        column (str):Column to which the 'item' filter is applied
-        item (str):Item which is filtered for.
-        gui_table (Tk treeview object):Table where info will be displayed.
-    """
-
+    #Fetches info from sqlite_table based on an item filter. Returns information
+    #into the current gui_table.Configures even-numbered rows to have a grey background.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     if item == "All":
@@ -219,10 +148,8 @@ def view_products(sqlite_table,column,item,gui_table):
     gui_table.tag_configure('even', background='#E8E8E8')
 
 def sheets_view():
-    """Displays a toplevel window populated by clickable links to production sheets.
-    Production sheets are found within the 'production_sheets' folder.
-    """
-
+    #Displays a toplevel window populated by clickable links to production sheets.
+    #Production sheets are found within the 'production_sheets' folder.
     sheets_window = Toplevel(window)
     files = os.listdir(os.getcwd() + "\\production_sheets")
     window_height = 0
@@ -240,10 +167,8 @@ def sheets_view():
     sheets_window.resizable(0,0)
 
 def labels_view():
-    """Displays a toplevel window populated by clickable links to case label sheets.
-    Label sheets are found within the 'case_labels' folder.
-    """
-
+    #Displays a toplevel window populated by clickable links to case label sheets.
+    #Label sheets are found within the 'case_labels' folder.
     labels_window = Toplevel(window)
     files = os.listdir(os.getcwd() + "\\case_labels")
     window_height = 0
@@ -260,59 +185,31 @@ def labels_view():
     labels_window.geometry("%dx%d+%d+%d" % (300,window_height,x,y))
     labels_window.resizable(0,0)
 
-
-def edit_check(sqlite_table,gui_table,edit_func):
-    """Checks current gui_table to see if a selection has been made. If so, creates
-    an instance of the Edit_View class, creating a populated toplevel window. If not,
-    displays a messagebox prompting the user to make a selection.
-
-    Args:
-        sqlite_table (sqlite table):Used as Edit_View arg. See Edit_View for details.
-        gui_table (Tk treeview table):Used as Edit_View arg. See Edit_View for details.
-        edit_func (function):Used as Edit_View arg. See Edit_View for details.
-    Returns:
-        Edit_View(window,sqlite_table,gui_table,2,edit_func)
-    """
-
+def selection_check(sqlite_table,gui_table,edit_func,edit=True):
+    #Checks to see if a gui_table selection has been made and returns the respective
+    #action based on the gui_table
     item_values = gui_table.item(gui_table.selection())['values']
     if item_values:
-        Edit_View(window,sqlite_table,gui_table,2,edit_func)
+        if gui_table == po_tbl and edit==False:
+            po_num = item_values[7]
+            try:
+                excel_file = os.getcwd() + "/purchase_orders/" + po_num[:4] + "/" + po_num + ".xlsx"
+                os.system('start EXCEL.EXE ' + excel_file)
+            except:
+                messagebox.showerror("Program Error",
+                "There was an error finding Excel within the program files.",parent=window)
+                window.filename = filedialog.askopenfilename(initialdir = os.getcwd() + "/purchase_orders/" + po_num[:4],title = "Select file")
+                os.system('start EXCEL.EXE ' + window.filename)
+        elif gui_table == inprog_tbl:
+            Finish_View(window,item_values)
+        else:
+            Edit_View(window,sqlite_table,gui_table,2,edit_func)
     else:
         messagebox.showerror("Selection Error","Please select an inventory item.")
 
-def po_check(gui_table):
-
-    item_values = gui_table.item(gui_table.selection())['values']
-    if item_values:
-        po_num = item_values[7]
-        try:
-            excel_file = os.getcwd() + "/purchase_orders/" + po_num[:4] + "/" + po_num + ".xlsx"
-            os.system('start EXCEL.EXE ' + excel_file)
-        except:
-            messagebox.showerror("Program Error",
-            "There was an error finding Excel within the program files.",parent=window)
-            window.filename = filedialog.askopenfilename(initialdir = os.getcwd() + "/purchase_orders/" + po_num[:4],title = "Select file")
-            os.system('start EXCEL.EXE ' + window.filename)
-    else:
-        messagebox.showerror("Selection Error","Please select a purchase order item.")
-
-def finish_check(gui_table):
-
-    item_values = gui_table.item(gui_table.selection())['values']
-    if item_values:
-        Finish_View(window,item_values)
-    else:
-        messagebox.showerror("Selection Error","Please select an item.")
-
 def gui_table_sort(gui_table, column, reverse):
-    """Sorts gui tables in ascending order based on the column header clicked.
-    The next click upon the header will be in reverse order.
-
-    Args:
-        gui_table (Tk treeview table):Table that will be sorted
-        column (str):Column name used as basis for sorting
-        reverse (bool):Whether or not the sort is in reverse
-    """
+    #Sorts gui tables in ascending order based on the column header clicked.
+    #The next click upon the header will be in reverse order.
     l = [(gui_table.set(k, column), k) for k in gui_table.get_children()]
     l.sort(reverse=reverse)
 
@@ -328,14 +225,8 @@ def gui_table_sort(gui_table, column, reverse):
     gui_table.heading(column, text=column, command=lambda c=column: gui_table_sort(gui_table, c, not reverse))
 
 def total_calc(sqlite_table):
-    """Returns the sum of all values in a table's total column. Used by the
-    Total_Label class to display the output.
-
-    Args:
-        sqlite_table (sqlite table):Table from which total values are taken
-    Returns:
-        total, where total = SUM(amount*price) from the sqlite table
-    """
+    #Returns the sum of all values in a table's total column. Used by the
+    #Total_Label class to display the output.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("SELECT SUM(amount*price) FROM " + sqlite_table)
@@ -343,19 +234,27 @@ def total_calc(sqlite_table):
     conn.close()
     return total
 
+def cal_button(tplvl,date_entry):
+    #Creates a toplevel window to provide a calendar date selection tool.
+    tplvl.top = Toplevel(window)
+    tplvl.cal = Calendar(tplvl.top, font="Arial 14", selectmode='day', locale='en_US',
+                   cursor="hand2")
+    tplvl.cal.pack(fill="both", expand=True)
+    Button(tplvl.top, text="ok", command=lambda: retrieve_date(tplvl,date_entry)).pack()
+    tplvl.top.focus()
+
+def retrieve_date(tplvl,date_entry):
+    #Updates the date-entry widget within the toplevel widget.
+    date_entry.config(state=NORMAL)
+    date_entry.delete(0,END)
+    date_entry.insert(END,tplvl.cal.selection_get().strftime("%Y-%m-%d"))
+    date_entry.config(state="readonly")
+    tplvl.top.destroy()
+
 #creates toplevel populated by inputs for items in table
 class Add_View(Toplevel):
-    """A toplevel widget with labels corresponding to sqlite table columns and entry
-    widgets to insert data into the table.
-
-    Args:
-        master (tkinter widget object):Parent widget of the Add_View object
-        sqlite_table (sqlite table):Table that will be added to
-        gui_table (Tk treeview table):Table where label and entry widgets will come
-            from
-        entry_col (int):Column index where entries will be placed by .grid()
-    """
-
+    #A toplevel widget with labels corresponding to sqlite table columns and entry
+    #widgets to insert data into the sqlite table.
     def __init__(self,master,sqlite_table,gui_table,entry_col):
         self.window_height = 0
         self.sqlite_table = sqlite_table
@@ -364,18 +263,22 @@ class Add_View(Toplevel):
         self.x = (screen_width/2) - (width/2) + 100
         self.y = ((screen_height/2) - (height/2)) + 50
         Toplevel.__init__(self,master=master)
+
+        #title frame
         self.title_frame = Frame(self)
         Label(self.title_frame,text="Add Product to "+ self.sqlite_table.replace("_"," ").title() + " Inventory",font="Arial 10 bold").pack()
         self.title_frame.grid(row=0,column=0,columnspan=2,pady=5)
+
+        #create labels and entries based on gui_table column headers
         for index,description in enumerate(self.gui_table.columns,1):
             if (description.lower() != 'type'):
                 Label(self,text=description + ":").grid(row=index,column=0)
-                if description.lower() == 'total':
+                if description.lower() == 'total':  #auto-filled total entry
                     self.total_text = StringVar()
                     self.total_entry = Entry(self,textvariable=self.total_text)
                     self.total_entry.config(state="readonly")
                     self.total_entry.grid(row=index,column=self.entry_col)
-                elif (description.lower().find('age') != -1):
+                elif (description.lower().find('age') != -1):   #auto-filled age entry
                     self.age_text = StringVar()
                     self.age_entry = Entry(self, textvariable=self.age_text)
                     self.age_entry.config(state="readonly")
@@ -383,15 +286,12 @@ class Add_View(Toplevel):
                 else:
                     Entry(self).grid(row=index,column=self.entry_col)
                 self.window_height += 35
-                if (description.lower().find('date') != -1):
+                if (description.lower().find('date') != -1):    #date entry with calendar button
                     self.date_index = index
                     self.date_entry = self.grid_slaves(row=self.date_index,column=self.entry_col)[0]
                     self.date_entry.config(state="readonly")
-                    self.image = Image.open("calendar.png")
-                    self.image = self.image.resize((22,22))
-                    self.photo = ImageTk.PhotoImage(self.image)
-                    self.cal_link = Button(self, image=self.photo, command = self.cal_button)
-                    self.cal_link.image = self.photo
+                    self.cal_link = Button(self, image=cal_photo, command=lambda: cal_button(self,self.date_entry))
+                    self.cal_link.image = cal_photo
                     self.cal_link.grid(row=index,column=self.entry_col+1)
                 elif ((description.lower().find('total') != -1) or (description.lower().find('age') != -1)):
                     self.labels = [x for x in reversed(self.grid_slaves(column=0)) if (x.winfo_class() == 'Label')]
@@ -403,36 +303,31 @@ class Add_View(Toplevel):
                             self.price_row = entry.grid_info()['row']
                             self.price_entry = self.grid_slaves(row=self.price_row,column=self.entry_col)[0]
                     self.total_after()
-            else:   #handle type case
+            else:   #type option entry
                 Label(self,text=description + ":").grid(row=index,column=0)
                 self.options = ttk.Combobox(self,values = type_options[sqlite_table])
                 self.options.set(type_options[sqlite_table][0])
                 self.options.config(width=16, background="white", justify='center', state='readonly')
                 self.options.grid(row=index,column=self.entry_col)
                 self.window_height += 35
+
+        #button frame
         self.grid_size = self.grid_size()[1]
         self.button_frame = Frame(self)
         Button(self.button_frame,text="Add Item",width=10,command = lambda : self.add_item(self.sqlite_table)).pack(side=LEFT,padx=5,pady=5)
         Button(self.button_frame,text="Cancel",width=10,command = lambda : self.destroy()).pack(side=LEFT,padx=5,pady=5)
         self.button_frame.grid(row=self.grid_size+1,column=0,columnspan=2)
+
         self.title("Add to " + self.sqlite_table.replace("_"," ").title())
         self.focus()
         self.geometry("+%d+%d" % (self.x,self.y))
         self.resizable(0,0)
 
     def add_item(self,sqlite_table):
-        '''Work through Add_View toplevel to find entry widgets and extract these values to be
-        inserted into the given sqlite table. Uses db_update() to update certain
-        column values afterwards and view_products() to display the updated gui table.
-
-        Args:
-            sqlite_table (sqlite table):Table to insert new entry within
-        Returns:
-            db_update()
-            view_products(self.sqlite_table,'null','All',self.gui_table)
-        '''
-
-        self.additions = []
+        #Work through Add_View toplevel to find entry widgets and extract these values to be
+        #inserted into the given sqlite table. Uses db_update() to update certain
+        #column values afterwards and view_products() to display the updated gui table.
+        self.additions = [] #list to be populated by entries
         self.num_entries = 0
         self.entries = [x for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == 'TCombobox')]
         for entry in self.entries: #work through add_item entry widgets
@@ -455,39 +350,15 @@ class Add_View(Toplevel):
         view_products(self.sqlite_table,'null','All',self.gui_table)
         self.destroy()
 
-    def cal_button(self):
-        """Creates a toplevel window to provide a calendar date selection tool.
-        """
-
-        self.top = Toplevel(window)
-        self.cal = Calendar(self.top, font="Arial 14", selectmode='day', locale='en_US',
-                       cursor="hand2")
-        self.cal.pack(fill="both", expand=True)
-        def retrieve_date():
-            """Updates the date-entry widget within the toplevel widget.
-            """
-            self.date_entry.config(state=NORMAL)
-            self.date_entry.delete(0,END)
-            self.date_entry.insert(END,self.cal.selection_get().strftime("%Y-%m-%d"))
-            self.date_entry.config(state="readonly")
-            self.top.destroy()
-        Button(self.top, text="ok", command = retrieve_date).pack()
-        self.top.focus()
-
     def total_after(self):
-        """Widget after-function to auto-update total and age entry values.Repeats
-        every 150ms.
-        """
+        #Widget after-function to auto-update total and age entry values.Repeats
+        #every 150ms.
         def total_update():
-            """Tries to update total and age entry values.
-
-            Raises:
-                AttributeError: if price_entry, amount_entry or date_entry don't exist
-                ValueError: if price_entry, amount_entry or date_entry values are
-                    currently empty
-            """
-
-            try:
+            #Tries to update total and age entry values.
+            #Raises:
+            #AttributeError: if price_entry, amount_entry or date_entry don't exist
+            #ValueError: if price_entry, amount_entry or date_entry values are currently empty
+            try:    #update total entry
                 self.price_num = self.price_entry.get()
                 self.amount_num = self.amount_entry.get()
                 self.total_string = "$%.2f" % (float(self.amount_num)*float(self.price_num))
@@ -495,7 +366,7 @@ class Add_View(Toplevel):
                 return
             except (AttributeError, ValueError):
                 pass
-            try:
+            try:    #update age entry
                 self.date_value = datetime.strptime(self.date_entry.get(),'%Y-%m-%d')
                 self.date_diff = datetime.now() - self.date_value
                 self.barrel_age = "%d years, %d months" % (math.floor(self.date_diff.days/365.2425), (self.date_diff.days%365.2425)/30)
@@ -506,34 +377,42 @@ class Add_View(Toplevel):
         self.after(150,self.total_after)
 
 class Edit_View(Add_View):
-
+    #A toplevel widget with labels corresponding to sqlite table columns and entry
+    #widgets to update data in sqlite table
     def __init__(self,master,sqlite_table,gui_table,entry_col,edit_func):
         self.master = master
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
-        self.entry_col = entry_col
+        self.entry_col = entry_col  #column location for entry widgets
         self.edit_func = edit_func
         self.item_values = self.gui_table.item(self.gui_table.selection())['values']
-        if self.item_values:
-            Add_View.__init__(self,master,sqlite_table,gui_table,entry_col)
-            self.title("Edit " + self.sqlite_table.replace("_"," ").title())
-            self.title_frame.destroy()
-            self.title_frame = Frame(self)
-            Label(self.title_frame,text="Edit Product in "+ self.sqlite_table.replace("_"," ").title() + " Inventory",font="Arial 10 bold").pack()
-            self.title_frame.grid(row=0,column=0,columnspan=3)
-            for index,description in enumerate(self.gui_table.columns):
-                if (description.lower() != 'type'):
-                    Label(self,text=self.item_values[index],foreground='blue').grid(row=index+1,column=1)
-                else:
-                    Label(self,text=self.item_values[index],foreground='blue').grid(row=index+1,column=1)
-            self.button_frame.destroy()
-            self.button_frame = Frame(self)
-            Button(self.button_frame,text="Edit Item",command = lambda : self.edit_selection(self.edit_func)).pack(side=LEFT,padx=5,pady=5)
-            Button(self.button_frame,text="Cancel",command = lambda : self.destroy()).pack(side=LEFT,padx=5,pady=5)
-            self.button_frame.grid(row=self.grid_size+1,column=0,columnspan=3)
+        Add_View.__init__(self,master,sqlite_table,gui_table,entry_col)
+        self.title("Edit " + self.sqlite_table.replace("_"," ").title())
+        self.title_frame.destroy()  #Remove add_view title frame
+
+        #title frame
+        self.title_frame = Frame(self)
+        Label(self.title_frame,text="Edit Product in "+ self.sqlite_table.replace("_"," ").title() + " Inventory",font="Arial 10 bold").pack()
+        self.title_frame.grid(row=0,column=0,columnspan=3)
+
+        for index,description in enumerate(self.gui_table.columns): #create toplevel labels
+            if (description.lower() != 'type'):
+                Label(self,text=self.item_values[index],foreground='blue').grid(row=index+1,column=1)
+            else:
+                Label(self,text=self.item_values[index],foreground='blue').grid(row=index+1,column=1)
+        self.button_frame.destroy() #Remove add_view button frame
+
+        #button frame
+        self.button_frame = Frame(self)
+        Button(self.button_frame,text="Edit Item",command = lambda : self.edit_selection(self.edit_func)).pack(side=LEFT,padx=5,pady=5)
+        Button(self.button_frame,text="Cancel",command = lambda : self.destroy()).pack(side=LEFT,padx=5,pady=5)
+        self.button_frame.grid(row=self.grid_size+1,column=0,columnspan=3)
 
     def edit_selection(self,edit_func):
-        self.changes = []
+        #Work through Edit_View toplevel to find entry widgets and extract these values to be
+        #updated in the given sqlite table. Uses db_update() to update certain
+        #column values afterwards and view_products() to display the updated gui table.
+        self.changes = []   #list where updated entries will exist
         self.edit_entries = [x for x in reversed(self.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == 'TCombobox')]
         for entry in self.edit_entries:
             if entry.winfo_class() == 'Entry' and entry.get():
@@ -551,7 +430,8 @@ class Edit_View(Add_View):
         self.destroy()
 
 class Production_View(Toplevel):
-
+    #Toplevel used to register production. Subtracts values from raw materials when used.
+    #Handles unfinished products by placing in 'in_progress' table to be finished later.
     def __init__(self,master,sqlite_table,gui_table):
         self.master = master
         self.sqlite_table = sqlite_table
@@ -593,6 +473,7 @@ class Production_View(Toplevel):
         Label(self,text="Amount").grid(row=4,column=1,pady=2)
         Label(self,text="Material").grid(row=4,column=2,pady=2)
         self.type_rows = type_options['raw_materials']
+
         #create label, entry and option box for each type of raw material
         for index,description in enumerate(self.type_rows,5):
             Label(self,text=description + ":").grid(row=index,column=0,sticky=W)
@@ -604,8 +485,9 @@ class Production_View(Toplevel):
             self.opt_menu.config(width=20, background="white", justify='center', state='readonly')
             self.opt_menu.set(self.rows[0])
             self.opt_menu.grid(row=index,column=2,padx=5)
-        self.grid_size = self.grid_size()[1]
+
         #finished product checkbox
+        self.grid_size = self.grid_size()[1]
         self.check_var = IntVar()
         self.check_var.set(1)
         self.check_b = Checkbutton(self, text="Are the products finished? (i.e. labeled)", variable=self.check_var, command = self.cbox_check)
@@ -624,7 +506,6 @@ class Production_View(Toplevel):
         Button(self.button_frame,text="Cancel",width=10,command = lambda : self.destroy()).pack(side=LEFT,padx=5,pady=5)
         self.button_frame.grid(row=self.grid_size+3,column=0,columnspan=3)
 
-
         self.conn.close()   #make sure connection is closed
         self.title("Production")
         self.focus()
@@ -632,7 +513,8 @@ class Production_View(Toplevel):
         self.resizable(0,0)
 
     def confirm(self):
-
+        #Updates raw_materials, production_log and bottles/samples or in_progress
+        #sqlite tables with corresponding values from production toplevel
         self.product_amount = self.product_frame.grid_slaves(row=1,column=0)[0].get()
         self.case_amount = self.product_frame.grid_slaves(row=1,column=1)[0].get()
         self.product_var = self.product_frame.grid_slaves(row=1,column=2)[0].get()
@@ -714,7 +596,7 @@ class Production_View(Toplevel):
                     return
 
 
-            #Toplevel to insert description
+            #Toplevel to insert description for in_progress table
             self.desc_var = StringVar()
             self.desc_tl = Toplevel(self)
             Message(self.desc_tl,text="Please provide a description of why the production was considered unfinished. (ex. 'bottles unlabeled', 'waiting for labels')",width=300).grid(row=0,column=0,columnspan=2)
@@ -733,7 +615,8 @@ class Production_View(Toplevel):
             self.desc_tl.grab_set() #prevent user from clicking outside of toplevel
 
 class Purchase_Order(Toplevel):
-
+    #Toplevel used to create purchase orders. Updates purchase_order and bottles/samples
+    #based on values retrieved from the toplevel.
     def __init__(self,master):
         self.master = master
         self.x = x + 150
@@ -796,7 +679,7 @@ class Purchase_Order(Toplevel):
         Label(self.order_fr,text="PRODUCT").grid(row=0,column=2,sticky=N+E+S+W)
         Label(self.order_fr,text="UNIT COST").grid(row=0,column=3,sticky=N+E+S+W)
         Label(self.order_fr,text="TOTAL").grid(row=0,column=4,sticky=N+E+S+W)
-        for i in range(1,19):
+        for i in range(1,19):   #purchase order product information
             Entry(self.order_fr,width=5,justify="center",validate="key",validatecommand=(self.register(valid_dig),'%S','%d')).grid(row=i,column=0,sticky=N+E+S+W)
             ttk.Combobox(self.order_fr,values=['Cases','Bottles'],width=7,justify="center",state='readonly').grid(row=i,column=1,sticky=N+E+S+W)
             ttk.Combobox(self.order_fr,values=self.product_rows,justify="center",state='readonly').grid(row=i,column=2)
@@ -918,7 +801,8 @@ class Purchase_Order(Toplevel):
             self.destroy()
 
 class Finish_View(Toplevel):
-
+    #Toplevel used to finish 'in progress' production values. Deletes in_progress
+    #table entry and updates bottles/samples upon confirmation
     def __init__(self,master,values):
         self.master = master
         self.values = values
@@ -1016,11 +900,8 @@ class Grain_View(Toplevel):
         Label(self.type_fr,text="Date:").grid(row=2,column=0)
         self.date_entry = Entry(self.type_fr,state="readonly",justify="center")
         self.date_entry.grid(row=2,column=1)
-        self.image = Image.open("calendar.png")
-        self.image = self.image.resize((22,22))
-        self.photo = ImageTk.PhotoImage(self.image)
-        self.cal_link = Button(self.type_fr, image=self.photo, command = self.cal_button)
-        self.cal_link.image = self.photo
+        self.cal_link = Button(self.type_fr, image=cal_photo, command=lambda:  cal_button(self,self.date_entry))
+        self.cal_link.image = cal_photo
         self.cal_link.grid(row=2,column=2)
         self.type_fr.grid(row=1,column=0,columnspan=3)
 
@@ -1039,25 +920,6 @@ class Grain_View(Toplevel):
         self.geometry("%dx%d+%d+%d" % (240,240,self.x,self.y))
         self.resizable(0,0)
         self.focus()
-
-    def cal_button(self):
-        """Creates a toplevel window to provide a calendar date selection tool.
-        """
-
-        self.top = Toplevel(window)
-        self.cal = Calendar(self.top, font="Arial 14", selectmode='day', locale='en_US',
-                       cursor="hand2")
-        self.cal.pack(fill="both", expand=True)
-        def retrieve_date():
-            """Updates the date-entry widget within the toplevel widget.
-            """
-            self.date_entry.config(state=NORMAL)
-            self.date_entry.delete(0,END)
-            self.date_entry.insert(END,self.cal.selection_get().strftime("%Y-%m-%d"))
-            self.date_entry.config(state="readonly")
-            self.top.destroy()
-        Button(self.top, text="ok", command = retrieve_date).pack()
-        self.top.focus()
 
     def mash_num_upd(self,prev_type,curr_type):
         self.mash_num_entry.delete(0,END)
@@ -1299,6 +1161,8 @@ def valid_dec(str,cur_str,act):
 #option values for dropdown menus
 type_options = {'raw_materials': ['Bottles','Boxes','Caps','Capsules','Labels'], 'bottles': ['Vodka','Whiskey','Rum','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other'], 'grain': ['Corn','Rye','Malted Barley','Malted Wheat','Oat'], 'samples':['Vodka','Whiskey','Rum','Other'], 'mashes': ['Bourbon','Rye','Malt','Rum','Other']}
 
+
+
 #create root window, resize based on user's screen info
 window = Tk()
 window.title("Albany Distilling Company Inventory")
@@ -1314,7 +1178,10 @@ y = ((screen_height/2) - (height/2)) - 50
 window.geometry("%dx%d+%d+%d" % (width,height,x,y))
 window.resizable(1,1)
 
-
+#calendar button image
+cal_image = Image.open("calendar.png")
+cal_image = cal_image.resize((22,22))
+cal_photo = ImageTk.PhotoImage(cal_image)
 
 #set styles for gui and certain widgets
 s = ttk.Style(window)
@@ -1370,7 +1237,7 @@ raw_vfr = View_Frame(raw_cfr,'raw_materials',raw_tbl,["Bottles","Boxes","Caps","
 raw_optfr = Option_Frame(raw_cfr)
 Logistics_Button(raw_optfr,"Add Item",'raw_materials',raw_tbl,lambda: Add_View(window,'raw_materials',raw_tbl,1))
 Logistics_Button(raw_optfr,"Production",'raw_materials',raw_tbl,lambda: Production_View(window,'bottles',raw_tbl))
-Logistics_Button(raw_optfr,"Edit Selection",'raw_materials',raw_tbl,lambda: edit_check('raw_materials',raw_tbl,raw_edit))
+Logistics_Button(raw_optfr,"Edit Selection",'raw_materials',raw_tbl,lambda: selection_check('raw_materials',raw_tbl,raw_edit))
 Total_Label("raw_materials",raw_cfr)
 raw_optfr.pack()
 raw_cfr.pack(padx=10)
@@ -1379,7 +1246,7 @@ raw_cfr.pack(padx=10)
 prod_tbl = Treeview_Table(prod_fr,("Date","Product","Amount"))
 prod_cfr = Command_Frame(prod_fr)
 prod_optfr = Option_Frame(prod_cfr)
-Logistics_Button(prod_optfr,"Edit Selection",'production',prod_tbl,lambda: edit_check('production',prod_tbl,production_edit))
+Logistics_Button(prod_optfr,"Edit Selection",'production',prod_tbl,lambda: selection_check('production',prod_tbl,production_edit))
 prod_optfr.pack()
 prod_cfr.pack(padx=10)
 
@@ -1387,8 +1254,8 @@ prod_cfr.pack(padx=10)
 inprog_tbl = Treeview_Table(inprog_fr,("Date","Product","Amount","Description"))
 inprog_cfr = Command_Frame(inprog_fr)
 inprog_optfr = Option_Frame(inprog_cfr)
-Logistics_Button(inprog_optfr,"Finish Selection",'in_progress',inprog_tbl,lambda: finish_check(inprog_tbl))
-Logistics_Button(inprog_optfr,"Edit Selection",'in_progress',inprog_tbl,lambda: edit_check('in_progress',inprog_tbl,in_progress_edit))
+Logistics_Button(inprog_optfr,"Finish Selection",'in_progress',inprog_tbl,lambda: selection_check(None,inprog_tbl,None))
+Logistics_Button(inprog_optfr,"Edit Selection",'in_progress',inprog_tbl,lambda: selection_check('in_progress',inprog_tbl,in_progress_edit))
 inprog_optfr.pack()
 inprog_cfr.pack(padx=10)
 
@@ -1398,7 +1265,7 @@ bott_cfr = Command_Frame(bott_fr)
 bott_vfr = View_Frame(bott_cfr,'bottles',bott_tbl,["Vodka","Whiskey","Rum","Other","All"])
 bott_optfr = Option_Frame(bott_cfr)
 Logistics_Button(bott_optfr,"Add Item",'bottles',bott_tbl,lambda: Add_View(window,'bottles',bott_tbl,1))
-Logistics_Button(bott_optfr,"Edit Selection",'bottles',bott_tbl,lambda: edit_check('bottles',bott_tbl,bottles_edit))
+Logistics_Button(bott_optfr,"Edit Selection",'bottles',bott_tbl,lambda: selection_check('bottles',bott_tbl,bottles_edit))
 Total_Label("bottles",bott_cfr)
 bott_optfr.pack()
 bott_cfr.pack(padx=10)
@@ -1409,7 +1276,7 @@ samp_cfr = Command_Frame(samp_fr)
 samp_vfr = View_Frame(samp_cfr,'samples',samp_tbl,["Vodka","Whiskey","Rum","Other","All"])
 samp_optfr = Option_Frame(samp_cfr)
 Logistics_Button(samp_optfr,"Add Item",'samples',samp_tbl,lambda: Add_View(window,'samples',samp_tbl,1))
-Logistics_Button(samp_optfr,"Edit Selection",'samples',samp_tbl,lambda: edit_check('samples',samp_tbl,sample_edit))
+Logistics_Button(samp_optfr,"Edit Selection",'samples',samp_tbl,lambda: selection_check('samples',samp_tbl,sample_edit))
 Total_Label('samples',samp_cfr)
 samp_optfr.pack()
 samp_cfr.pack(padx=10)
@@ -1429,7 +1296,7 @@ grain_optfr = Option_Frame(grain_cfr)
 Logistics_Button(grain_optfr,"Produce Mash",'grain',grain_tbl,command=lambda: Grain_View(window,mash_tbl))
 Logistics_Button(grain_optfr,"Mash Production Sheet",'grain',grain_tbl,None)
 Logistics_Button(grain_optfr,"Add Grain",'grain',grain_tbl,lambda: Add_View(window,'grain',grain_tbl,1))
-Logistics_Button(grain_optfr,"Edit Selection",'grain',grain_tbl, lambda: edit_check('grain',grain_tbl,grain_edit))
+Logistics_Button(grain_optfr,"Edit Selection",'grain',grain_tbl, lambda: selection_check('grain',grain_tbl,grain_edit))
 Total_Label('grain',grain_cfr)
 grain_optfr.pack()
 grain_cfr.pack(padx=10)
@@ -1439,7 +1306,7 @@ mash_cfr = Command_Frame(mash_fr)
 mash_vfr = View_Frame(mash_cfr,'mashes',mash_tbl,["Bourbon","Rye","Malt","Other","All"])
 mash_optfr = Option_Frame(mash_cfr)
 Logistics_Button(mash_optfr,"Add Mash",'mashes',mash_tbl,lambda: Add_View(window,"mashes",mash_tbl,1))
-Logistics_Button(mash_optfr,"Edit Selection",'mashes',mash_tbl, lambda: edit_check('mashes',mash_tbl,mash_edit))
+Logistics_Button(mash_optfr,"Edit Selection",'mashes',mash_tbl, lambda: selection_check('mashes',mash_tbl,mash_edit))
 mash_optfr.pack()
 mash_cfr.pack(padx=10)
 
@@ -1452,7 +1319,7 @@ barr_cfr = Command_Frame(barr_fr)
 barr_vfr = View_Frame(barr_cfr,'barrels',barr_tbl,["Bourbon","Rye","Malt","Other","All"])
 barr_optfr = Option_Frame(barr_cfr)
 Logistics_Button(barr_optfr,"Add Barrel",'barrels',barr_tbl,lambda: Add_View(window,'barrels',barr_tbl,1))
-Logistics_Button(barr_optfr,"Edit Selection",'barrels',barr_tbl, lambda: edit_check('barrels',barr_tbl,barrel_edit))
+Logistics_Button(barr_optfr,"Edit Selection",'barrels',barr_tbl, lambda: selection_check('barrels',barr_tbl,barrel_edit))
 barr_optfr.pack()
 barr_cfr.pack(padx=10)
 
@@ -1464,8 +1331,8 @@ po_tbl = Treeview_Table(po_fr,("Date","Product","Amount","Unit","Price","Total",
 po_cfr = Command_Frame(po_fr)
 po_optfr = Option_Frame(po_cfr)
 Logistics_Button(po_optfr,"Create Purchase Order",'purchase_orders',po_tbl,lambda: Purchase_Order(window))
-Logistics_Button(po_optfr,"View Purchase Order",'purchase_orders',po_tbl,lambda: po_check(po_tbl))
-Logistics_Button(po_optfr,"Edit Selection",'purchase_orders',po_tbl,lambda: edit_check('purchase_orders',po_tbl,po_edit))
+Logistics_Button(po_optfr,"View Purchase Order",'purchase_orders',po_tbl,lambda: selection_check(None,po_tbl,None,edit=False))
+Logistics_Button(po_optfr,"Edit Selection",'purchase_orders',po_tbl,lambda: selection_check('purchase_orders',po_tbl,po_edit))
 
 po_optfr.pack()
 po_cfr.pack(padx=10)
