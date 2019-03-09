@@ -11,6 +11,7 @@ import math
 import openpyxl
 from openpyxl.styles import Font
 import string
+from docx import Document
 
 def database():
     #Create inventory database if it does not exist. Update certain values within
@@ -968,7 +969,7 @@ class Grain_View(Toplevel):
 
         self.grain_types = [x.cget("text") for x in reversed(self.grain_fr.grid_slaves()) if x.winfo_class() == "Label"][1:]    #labels except title label
         self.grain_entries = [x.get() for x in reversed(self.grain_fr.grid_slaves()) if x.winfo_class() == "Entry"] #grain amt entries
-
+        self.grain_info_tbl = []    #populated with lists of length 3 (grain,amt,order #) in grain_recur
         #subtract grain amounts from inventory
         #subtract from lowest grain amount first, then remove that data from table when = 0
         #and continue through next value
@@ -978,31 +979,58 @@ class Grain_View(Toplevel):
         for type,amount in zip(self.grain_types,self.grain_entries):
             self.grain_recur(type,amount)
 
-        #self.cur.execute("INSERT INTO mashes VALUES (?,?,?)",
-        #())
+        self.cur.execute("INSERT INTO mashes VALUES (?,?,?)",
+        (self.date_entry.get(),self.mash_num_entry.get(),self.type_menu.get()))
 
         self.conn.commit()
         self.conn.close()
+
+        self.file_path = os.getcwd()
+        self.file = open(self.file_path + '/production_sheets/Mash_Log-converted.docx', 'rb')
+        self.document = Document(self.file)
+
+        self.info_table = self.document.tables[0]
+        self.grain_table = self.document.tables[1]
+
+        for (row,info) in zip(self.info_table.rows,[self.date_entry.get(),self.type_menu.get(),self.mash_num_entry.get()]):
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    paragraph.text = info
+
+        for (row,gr_list) in zip(self.grain_table.rows,self.grain_info_tbl):
+            for (cell,num) in zip(row.cells,range(3)):
+                for para in cell.paragraphs:
+                    para.text = gr_list[num]
+
+        self.document.save(self.file_path + "/production_sheets/Mash_Log_1.docx")
+
         db_update()
         view_products('grain','null','All',grain_tbl)
         self.destroy()
 
     def grain_recur(self,type,amount):
+        #Subtract amounts from respective grain. Begins with minimum amount row,
+        #will then move to the next same-type grain entry if need be.
         self.cur.execute("SELECT MIN(amount) FROM grain WHERE type=?",(type,))
         self.grain_amt = list(self.cur)[0][0]
-
+        self.cur.execute("SELECT order_number,MIN(amount) FROM grain WHERE type=?",(type,))
+        self.order_number = list(self.cur)[0][0]
         if self.grain_amt:
             self.grain_diff = int(self.grain_amt) - int(amount)
             if self.grain_diff >= 0:
                 self.cur.execute("UPDATE grain SET amount=? WHERE type=? AND amount=?",(self.grain_diff,type,self.grain_amt))
+                self.grain_info_tbl.append([type,str(amount),str(self.order_number)])
+                return
             else:
                 self.cur.execute("DELETE FROM grain WHERE type=? AND amount=?",(type,self.grain_amt))
                 self.grain_diff = abs(self.grain_diff)
+                self.grain_info_tbl.append([type,str(self.grain_amt),str(self.order_number)])
                 self.grain_recur(type,self.grain_diff)
         else:
             messagebox.showerror("Grain Error",
             "There doesn't seem to be an inventory value for " +
             type + ", or there isn't enough grain, please fix this and try again.",parent=self)
+            self.conn.close()
             raise ValueError("Grain Error")
 
 
@@ -1133,7 +1161,7 @@ poRegex = re.compile(r'''
 mashRegex = re.compile(r'''
     (^\d{4})
     (/)
-    (\d{1})
+    (\d{2})
     (-)
     (\d{1})
     ([a-zA-Z]{1})''',re.VERBOSE)
@@ -1160,8 +1188,6 @@ def valid_dec(str,cur_str,act):
 
 #option values for dropdown menus
 type_options = {'raw_materials': ['Bottles','Boxes','Caps','Capsules','Labels'], 'bottles': ['Vodka','Whiskey','Rum','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other'], 'grain': ['Corn','Rye','Malted Barley','Malted Wheat','Oat'], 'samples':['Vodka','Whiskey','Rum','Other'], 'mashes': ['Bourbon','Rye','Malt','Rum','Other']}
-
-
 
 #create root window, resize based on user's screen info
 window = Tk()
