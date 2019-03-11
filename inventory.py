@@ -12,6 +12,7 @@ import openpyxl
 from openpyxl.styles import Font
 import string
 from docx import Document
+from docx.shared import Pt
 
 def database():
     #Create inventory database if it does not exist. Update certain values within
@@ -28,8 +29,9 @@ def database():
     cur.execute("UPDATE 'samples' SET total=PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'grain' ('order_number' TEXT, type TEXT, amount INTEGER,price REAL, total TEXT)")
     cur.execute("UPDATE 'grain' SET total=PRINTF('%s%.2f', '$', amount*price)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'mashes' (date DATE, mash_no TEXT, type TEXT)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'barrels' ('barrel_number' TEXT, type TEXT,'pg' INTEGER, 'date_filled' DATE, age TEXT,investor TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'grain_log' (date DATE, type TEXT, order_no TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'mashes' (date DATE, mash_no TEXT, type TEXT, grains TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'barrels' ('barrel_no' TEXT, type TEXT,'proof_gallons' INTEGER, 'date_filled' DATE, age TEXT,investor TEXT)")
     cur.execute("UPDATE 'barrels' SET age=PRINTF('%d years, %d months',(julianday('now') - julianday(date_filled)) / 365,(julianday('now') - julianday(date_filled)) % 365 / 30)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'purchase_orders' (date DATE,product TEXT, amount INTEGER, unit TEXT, price REAL, total REAL, destination TEXT, 'po_number' TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'employee_transactions' (date DATE,product TEXT, amount INTEGER, employee TEXT)")
@@ -118,6 +120,14 @@ def mash_edit(sql_edit):
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("UPDATE 'mashes' SET date=?, mash_no=?, type=? WHERE date=? AND mash_no=? AND type=?", sql_edit)
+    conn.commit()
+    conn.close()
+
+def grain_log_edit(sql_edit):
+    #Updates the 'grain_log' table with the changes provided by sql_edit.
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("UPDATE grain_log SET date=?, type=?, order_no=? WHERE date=? AND type=? AND order_no=?", sql_edit)
     conn.commit()
     conn.close()
 
@@ -869,19 +879,27 @@ class Grain_View(Toplevel):
         self.y = y + 150
         Toplevel.__init__(self,master=self.master)
         #get previous mash information
-        self.conn = sqlite3.Connection("inventory.db")
-        self.cur = self.conn.cursor()
-        self.cur.execute("SELECT mash_no,type FROM mashes ORDER BY date DESC LIMIT 1")
-        self.prev_mash = list(self.cur)[0]
-        self.prev_mash_num = self.prev_mash[0]
-        self.prev_mash_type = self.prev_mash[1]
-        self.conn.close()
-        #mash number regex matches
-        self.mo = mashRegex.search(self.prev_mash_num)
-        self.year = self.mo.group(1)    #prev mash's year
-        self.mash_count = self.mo.group(5)  #prev mash's ID number
-        self.mash_letter = self.mo.group(6) #prev mash's letter variable
-        self.mash_letters = list(string.ascii_uppercase[:8])    #letters A-H
+        try:
+            self.conn = sqlite3.Connection("inventory.db")
+            self.cur = self.conn.cursor()
+            self.cur.execute("SELECT mash_no,type FROM mashes ORDER BY date DESC LIMIT 1")
+            self.prev_mash = list(self.cur)[0]
+            self.prev_mash_num = self.prev_mash[0]
+            self.prev_mash_type = self.prev_mash[1]
+            self.conn.close()
+            #mash number regex matches
+            self.mo = mashRegex.search(self.prev_mash_num)
+            self.year = self.mo.group(1)    #prev mash's year
+            self.mash_count = self.mo.group(5)  #prev mash's ID number
+            self.mash_letter = self.mo.group(6) #prev mash's letter variable
+            self.mash_letters = list(string.ascii_uppercase[:8])    #letters A-H
+        except:
+            self.year = int(datetime.now().year)
+            self.mash_count = 0
+            self.mash_letter = "A"
+            self.prev_mash_type = None
+            pass
+
 
         #title frame
         self.title_fr = Frame(self)
@@ -899,7 +917,9 @@ class Grain_View(Toplevel):
         self.mash_num_entry = Entry(self.type_fr,justify='center')
         self.mash_num_entry.grid(row=1,column=1)
         Label(self.type_fr,text="Date:").grid(row=2,column=0)
-        self.date_entry = Entry(self.type_fr,state="readonly",justify="center")
+        self.date = StringVar()
+        self.date.trace("w", lambda name, index, mode: self.mash_num_upd(self.prev_mash_type,self.type_menu.get())) #update mash number with month value
+        self.date_entry = Entry(self.type_fr,state="readonly",justify="center",textvariable=self.date)
         self.date_entry.grid(row=2,column=1)
         self.cal_link = Button(self.type_fr, image=cal_photo, command=lambda:  cal_button(self,self.date_entry))
         self.cal_link.image = cal_photo
@@ -924,7 +944,11 @@ class Grain_View(Toplevel):
 
     def mash_num_upd(self,prev_type,curr_type):
         self.mash_num_entry.delete(0,END)
-        self.new_batch_num = self.year + "/" + '{:02d}'.format(datetime.now().month) + "-" + str(int(self.mash_count) + 1) + "A"
+        if self.date_entry.get():
+            self.month = self.date_entry.get()[5:7]
+        else:
+            self.month = '{:02d}'.format(datetime.now().month)
+        self.new_batch_num = str(self.year) + "/" + str(self.month) + "-" + str(int(self.mash_count) + 1) + "A"
         #handle new year case
         if int(self.year) != int(datetime.now().year):
             self.mash_num_entry.insert(0,self.year + "/1-1A")
@@ -932,7 +956,7 @@ class Grain_View(Toplevel):
             if prev_type == curr_type:
                 if self.mash_letter != "H": #same type, same batch case
                     self.mash_let_indx = self.mash_letters.index(self.mash_letter) + 1
-                    self.new_batch_num = self.year + "/" + '{:02d}'.format(datetime.now().month) + "-" + self.mash_count + self.mash_letters[self.mash_let_indx]
+                    self.new_batch_num = str(self.year) + "/" + str(self.month) + "-" + str(self.mash_count) + self.mash_letters[self.mash_let_indx]
                     self.mash_num_entry.insert(0,self.new_batch_num)
                 else:   #same type, next batch case
                     self.mash_num_entry.insert(0,self.new_batch_num)
@@ -966,43 +990,70 @@ class Grain_View(Toplevel):
 
 
     def confirm(self):
+        try:
+            self.file_path = os.getcwd()
+            self.file = open(self.file_path + '/production_sheets/Mash_Log-converted.docx', 'rb')
+            self.document = Document(self.file)
+            self.file.close()
+        except:
+            messagebox.showerror("File Error",
+            "It seems the Word Document you are trying to edit or change is already"
+            + "open, please close it and try again.",parent=self)
+            return
 
         self.grain_types = [x.cget("text") for x in reversed(self.grain_fr.grid_slaves()) if x.winfo_class() == "Label"][1:]    #labels except title label
         self.grain_entries = [x.get() for x in reversed(self.grain_fr.grid_slaves()) if x.winfo_class() == "Entry"] #grain amt entries
         self.grain_info_tbl = []    #populated with lists of length 3 (grain,amt,order #) in grain_recur
+        self.grain_order_nums = []  #populated with order numbers from grain_recur
         #subtract grain amounts from inventory
         #subtract from lowest grain amount first, then remove that data from table when = 0
         #and continue through next value
         self.conn = sqlite3.Connection("inventory.db")
         self.cur = self.conn.cursor()
 
-        for type,amount in zip(self.grain_types,self.grain_entries):
-            self.grain_recur(type,amount)
+        if self.type_menu.get() == "Rum":
+            pass
+        else:
+            for type,amount in zip(self.grain_types,self.grain_entries):
+                self.grain_recur(type,amount)
 
-        self.cur.execute("INSERT INTO mashes VALUES (?,?,?)",
-        (self.date_entry.get(),self.mash_num_entry.get(),self.type_menu.get()))
+        self.cur.execute("INSERT INTO mashes VALUES (?,?,?,?)",
+        (self.date_entry.get(),self.mash_num_entry.get(),self.type_menu.get(),", ".join(self.grain_order_nums)))
 
         self.conn.commit()
         self.conn.close()
-
-        self.file_path = os.getcwd()
-        self.file = open(self.file_path + '/production_sheets/Mash_Log-converted.docx', 'rb')
-        self.document = Document(self.file)
 
         self.info_table = self.document.tables[0]
         self.grain_table = self.document.tables[1]
 
         for (row,info) in zip(self.info_table.rows,[self.date_entry.get(),self.type_menu.get(),self.mash_num_entry.get()]):
             for cell in row.cells:
-                for paragraph in cell.paragraphs:
-                    paragraph.text = info
+                for para in cell.paragraphs:
+                    para.text = info
+                    for run in para.runs:
+                        run.font.name = "Verdana"
+                        run.font.size = Pt(14)
 
         for (row,gr_list) in zip(self.grain_table.rows,self.grain_info_tbl):
             for (cell,num) in zip(row.cells,range(3)):
                 for para in cell.paragraphs:
                     para.text = gr_list[num]
+                    for run in para.runs:
+                        run.font.name = "Verdana"
+                        run.font.size = Pt(14)
 
-        self.document.save(self.file_path + "/production_sheets/Mash_Log_1.docx")
+        self.document.save(self.file_path + "/production_sheets/Last_Mash_Log.docx")
+
+        self.open_ques = messagebox.askquestion("Open the PO Excel File?",
+        "Would you like to open the Purchase Order file in Word? This will allow you to print it now.")
+        if self.open_ques == "yes":
+            try:
+                os.system('start ' + self.file_path + "/production_sheets/Last_Mash_Log.docx")
+            except:
+                messagebox.showerror("Program Error",
+                "There was an error finding Word within the program files.",parent=self)
+        else:
+            pass
 
         db_update()
         view_products('grain','null','All',grain_tbl)
@@ -1020,9 +1071,18 @@ class Grain_View(Toplevel):
             if self.grain_diff >= 0:
                 self.cur.execute("UPDATE grain SET amount=? WHERE type=? AND amount=?",(self.grain_diff,type,self.grain_amt))
                 self.grain_info_tbl.append([type,str(amount),str(self.order_number)])
-                return
+                self.grain_order_nums.append(str(self.order_number))
+                self.cur.execute("SELECT MIN(amount) FROM grain WHERE type=?",(type,))
+                self.grain_amt = list(self.cur)[0][0]
+                if self.grain_amt == 0:
+                    self.cur.execute("DELETE FROM grain WHERE type=? AND amount=?",(type,self.grain_amt))
+                    self.cur.execute("INSERT INTO grain_log VALUES (?,?,?)",(self.date_entry.get(),type,self.order_number))
+                    return
+                else:
+                    return
             else:
                 self.cur.execute("DELETE FROM grain WHERE type=? AND amount=?",(type,self.grain_amt))
+                self.cur.execute("INSERT INTO grain_log VALUES (?,?,?)",(self.date_entry.get(),type,self.order_number))
                 self.grain_diff = abs(self.grain_diff)
                 self.grain_info_tbl.append([type,str(self.grain_amt),str(self.order_number)])
                 self.grain_recur(type,self.grain_diff)
@@ -1078,9 +1138,39 @@ class View_Frame(LabelFrame):
         self.height = int(screen_height/1.5)
         self.labels = labels
         LabelFrame.__init__(self,master=self.master,height=self.height,bd=5,relief=RIDGE,text="View",font="bold")
-        for label in self.labels:
-            View_Button(master=self,text=label,sqlite_table=self.sqlite_table,gui_table=self.gui_table)
+        Label(self,text="Columns").grid(row=0,column=0)
+        self.column_vals = list(self.gui_table["columns"])
+        self.column_vals.append("All")
+        self.columns = ttk.Combobox(self,values=self.column_vals)
+        self.columns.set(self.column_vals[-1])
+        self.columns.config(width=18, background="white", justify='center', state='readonly')
+        self.columns.bind("<<ComboboxSelected>>", self.col_upd)
+        self.columns.grid(row=1,column=0,pady=5,padx=5)
+        Label(self,text="Values").grid(row=2,column=0)
+        self.rows = ttk.Combobox(self,values=["N/A"])
+        self.rows.set("N/A")
+        self.rows.config(width=18, background="white", justify='center', state='readonly')
+        self.rows.bind("<<ComboboxSelected>>", self.row_upd)
+        self.rows.grid(row=3,column=0,pady=5,padx=5)
         self.pack()
+
+    def col_upd(self,event):
+        self.column_val = self.columns.get().lower().replace(" ","_")
+        if self.columns.get() == "All":
+            self.rows.config(values="All")
+            self.rows.set("N/A")
+        else:
+            self.conn = sqlite3.Connection("inventory.db")
+            self.conn.row_factory = lambda cursor, row: row[0]
+            self.cur = self.conn.cursor()
+            self.cur.execute("SELECT " + self.column_val + " FROM " + self.sqlite_table)
+            self.value_rows = self.cur.fetchall()
+        self.conn.close()
+        self.rows.config(values=self.value_rows)
+        self.rows.set(self.value_rows[0])
+
+    def row_upd(self,event):
+        pass
 
 class Option_Frame(LabelFrame):
 
@@ -1088,15 +1178,6 @@ class Option_Frame(LabelFrame):
         self.master = master
         self.height = height
         LabelFrame.__init__(self,master=self.master,text="Options",height=self.height,relief=RIDGE,font="bold",bd=5)
-
-#gives view button functionality to view items by type
-class View_Button(Button):
-
-    def __init__(self,master,text,sqlite_table,gui_table):
-        self.sqlite_table = sqlite_table
-        self.gui_table = gui_table
-        Button.__init__(self,master,text=text,command = lambda: view_products(sqlite_table,"Type",text,gui_table),width=20,height=1, font=('Calibri',12,'bold'))
-        self.pack()
 
 #gives production buttons functionality
 class Inventory_Button(Button):
@@ -1187,7 +1268,10 @@ def valid_dec(str,cur_str,act):
         return str.isdigit()
 
 #option values for dropdown menus
-type_options = {'raw_materials': ['Bottles','Boxes','Caps','Capsules','Labels'], 'bottles': ['Vodka','Whiskey','Rum','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other'], 'grain': ['Corn','Rye','Malted Barley','Malted Wheat','Oat'], 'samples':['Vodka','Whiskey','Rum','Other'], 'mashes': ['Bourbon','Rye','Malt','Rum','Other']}
+type_options = {'raw_materials': ['Bottles','Boxes','Caps','Capsules','Labels'],
+ 'bottles': ['Vodka','Whiskey','Rum','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other'],
+  'grain': ['Corn','Rye','Malted Barley','Malted Wheat','Oat'], 'samples':['Vodka','Whiskey','Rum','Other'],
+   'mashes': ['Bourbon','Rye','Malt','Rum','Other'], 'grain_log': ['Corn','Rye','Malted Barley','Malted Wheat','Oat']}
 
 #create root window, resize based on user's screen info
 window = Tk()
@@ -1286,7 +1370,7 @@ inprog_optfr.pack()
 inprog_cfr.pack(padx=10)
 
 #
-bott_tbl = Treeview_Table(bott_fr,("Type","Product","Amount (Cases)","Case Size","Price","Total"))
+bott_tbl = Treeview_Table(bott_fr,("Type","Product","Amount","Case Size","Price","Total"))
 bott_cfr = Command_Frame(bott_fr)
 bott_vfr = View_Frame(bott_cfr,'bottles',bott_tbl,["Vodka","Whiskey","Rum","Other","All"])
 bott_optfr = Option_Frame(bott_cfr)
@@ -1315,6 +1399,9 @@ grain_fr.bind('<Visibility>',lambda event: view_products('grain','null','All',gr
 mash_fr = ttk.Frame(grain_nb)
 grain_nb.add(mash_fr, text="Mash Log", padding=10)
 mash_fr.bind('<Visibility>',lambda event: view_products('mashes','null','All',mash_tbl))
+grain_log_fr = ttk.Frame(grain_nb)
+grain_nb.add(grain_log_fr, text="Grain Log", padding=10)
+grain_log_fr.bind('<Visibility>',lambda event: view_products('grain_log','null','All',grain_log_tbl))
 
 grain_tbl = Treeview_Table(grain_fr,("Order No","Type","Amount","Price","Total"))
 grain_cfr = Command_Frame(grain_fr)
@@ -1327,7 +1414,7 @@ Total_Label('grain',grain_cfr)
 grain_optfr.pack()
 grain_cfr.pack(padx=10)
 
-mash_tbl = Treeview_Table(mash_fr,("Date","Mash No.","Type"))
+mash_tbl = Treeview_Table(mash_fr,("Date","Mash No","Type","Grains"))
 mash_cfr = Command_Frame(mash_fr)
 mash_vfr = View_Frame(mash_cfr,'mashes',mash_tbl,["Bourbon","Rye","Malt","Other","All"])
 mash_optfr = Option_Frame(mash_cfr)
@@ -1336,10 +1423,18 @@ Logistics_Button(mash_optfr,"Edit Selection",'mashes',mash_tbl, lambda: selectio
 mash_optfr.pack()
 mash_cfr.pack(padx=10)
 
+grain_log_tbl = Treeview_Table(grain_log_fr,("Finish Date","Type","Order No"))
+grain_log_cfr = Command_Frame(grain_log_fr)
+grain_log_optfr = Option_Frame(grain_log_cfr)
+Logistics_Button(grain_log_optfr,"Edit Selection",'grain_log',grain_log_tbl, lambda: selection_check('grain_log',grain_log_tbl,grain_log_edit))
+grain_log_optfr.pack()
+grain_log_cfr.pack(padx=10)
+
 #create barrel inventory notebook and populates with tabbed frames
 barr_nb = ttk.Notebook(window, height=height, width=width)
 barr_fr = ttk.Frame(barr_nb)
 barr_nb.add(barr_fr, text="Barrel Inventory",padding=10)
+
 barr_tbl = Treeview_Table(barr_fr,("Barrel No","Type","Proof Gallons","Date Filled","Age","Investor"))
 barr_cfr = Command_Frame(barr_fr)
 barr_vfr = View_Frame(barr_cfr,'barrels',barr_tbl,["Bourbon","Rye","Malt","Other","All"])
@@ -1353,6 +1448,7 @@ barr_cfr.pack(padx=10)
 po_nb = ttk.Notebook(window,height=height,width=width)
 po_fr = Frame(po_nb)
 po_nb.add(po_fr,text="Purchase Orders",padding=10)
+
 po_tbl = Treeview_Table(po_fr,("Date","Product","Amount","Unit","Price","Total","Destination","PO No."))
 po_cfr = Command_Frame(po_fr)
 po_optfr = Option_Frame(po_cfr)
@@ -1367,6 +1463,7 @@ po_cfr.pack(padx=10)
 emptr_nb = ttk.Notebook(window,height=height,width=width)
 emptr_fr = Frame(emptr_nb)
 emptr_nb.add(emptr_fr,text="Employee Transactions",padding=10)
+
 emptr_tbl = Treeview_Table(emptr_fr,("Date","Product","Amount","Employee"))
 emptr_cfr = Command_Frame(emptr_fr)
 emptr_optfr = Option_Frame(emptr_cfr)
