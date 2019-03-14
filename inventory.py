@@ -31,8 +31,11 @@ def database():
     cur.execute("UPDATE 'grain' SET total=PRINTF('%s%.2f', '$', amount*price)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'grain_log' (date DATE, type TEXT, order_no TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'mashes' (date DATE, mash_no TEXT, type TEXT, grains TEXT)")
-    cur.execute("CREATE TABLE IF NOT EXISTS 'barrels' ('barrel_no' TEXT, type TEXT,'proof_gallons' INTEGER, 'date_filled' DATE, age TEXT,investor TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'barrels' ('barrel_no' TEXT, type TEXT,gallons INTEGER,'proof_gallons' REAL, 'date_filled' DATE, age TEXT, investor TEXT)")
     cur.execute("UPDATE 'barrels' SET age=PRINTF('%d years, %d months',(julianday('now') - julianday(date_filled)) / 365,(julianday('now') - julianday(date_filled)) % 365 / 30)")
+    cur.execute("CREATE TABLE IF NOT EXISTS 'estimated_cogs' (raw_mat REAL, energy REAL, labor REAL, error REAL,'total_per_bottle' REAL,'bond_ins' REAL, storage REAL, mult_fact REAL, 'total_per_pg' REAL)")
+    cur.execute("UPDATE 'estimated_cogs' SET total_per_bottle=PRINTF('%.2f', (raw_mat + energy + labor + error))")
+    cur.execute("UPDATE 'estimated_cogs' SET total_per_pg=PRINTF('%.2f',((total_per_bottle*mult_fact) + bond_ins + storage))")
     cur.execute("CREATE TABLE IF NOT EXISTS 'purchase_orders' (date DATE,product TEXT, amount INTEGER, unit TEXT, price REAL, total REAL, destination TEXT, 'po_number' TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS 'employee_transactions' (date DATE,product TEXT, amount INTEGER, employee TEXT)")
     conn.commit()
@@ -51,83 +54,15 @@ def db_update():
     conn.commit()
     conn.close()
 
-def raw_edit(sql_edit):
+def edit_db(sql_edit,sqlite_table):
     #Updates the 'raw_materials' table with the changes provided by sql_edit.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
-    cur.execute("UPDATE 'raw_materials' SET type=?,product=?,amount=?,price=?,total=? WHERE type=? AND product=? AND amount=? AND price=? AND total=?", sql_edit)
-    conn.commit()
-    conn.close()
-
-def production_edit(sql_edit):
-    #Updates the 'production' table with changes provided by sql_edit.
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("UPDATE 'production' SET date=?, product=?, amount=? WHERE date=? AND product=? AND amount=?", sql_edit)
-    conn.commit()
-    conn.close()
-
-def in_progress_edit(sql_edit):
-    #Updates the 'in_progress' table with changes provided by sql_edit.
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("UPDATE 'in_progress' SET date=?, product=?, amount=?, description=? WHERE date=? AND product=? AND amount=? AND description=?", sql_edit)
-    conn.commit()
-    conn.close()
-
-def bottles_edit(sql_edit):
-    #Updates 'bottles' table with changes provided by sql_edit.
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("UPDATE 'bottles' SET type=?, product=?, amount=?, case_size=?, price=?, total=? WHERE type=? AND product=? AND amount=? AND case_size=? AND price=? AND total=?", sql_edit)
-    conn.commit()
-    conn.close()
-
-def sample_edit(sql_edit):
-    #Updates 'samples' table with changes provided by sql_edit.
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("UPDATE 'samples' SET type=?, product=?, amount=?, price=?, total=? WHERE type=? AND product=? AND amount=? AND price=? AND total=?", sql_edit)
-    conn.commit()
-    conn.close()
-
-def barrel_edit(sql_edit):
-    #Updates the 'barrels' table with the changes provided by sql_edit.
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("UPDATE 'barrels' SET barrel_number=?, type=?, pg=?, date_filled=?, age=?, investor=? WHERE barrel_number=? AND type=? AND pg=? AND date_filled=? AND age=? AND investor=?", sql_edit)
-    conn.commit()
-    conn.close()
-
-def grain_edit(sql_edit):
-    #Updates the 'grain' table with the changes provided by sql_edit.
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("UPDATE 'grain' SET order_number=?, type=?, amount=? ,price=?, total=? WHERE order_number=? AND type=? AND amount=? AND price=? AND total=?", sql_edit)
-    conn.commit()
-    conn.close()
-
-def po_edit(sql_edit):
-    #Updates the 'purchase_orders' table with the changes provided by sql_edit.
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("UPDATE 'purchase_orders' SET date=?, product=?, amount=?, unit=?, price=?, total=?, destination=?, po_number=? WHERE date=? AND product=? AND amount=? AND unit=? AND price=? AND total=? AND destination=? AND po_number=?", sql_edit)
-    conn.commit()
-    conn.close()
-
-def mash_edit(sql_edit):
-    #Updates the 'mashes' table with the changes provided by sql_edit.
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("UPDATE 'mashes' SET date=?, mash_no=?, type=? WHERE date=? AND mash_no=? AND type=?", sql_edit)
-    conn.commit()
-    conn.close()
-
-def grain_log_edit(sql_edit):
-    #Updates the 'grain_log' table with the changes provided by sql_edit.
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("UPDATE grain_log SET date=?, type=?, order_no=? WHERE date=? AND type=? AND order_no=?", sql_edit)
+    cur.execute("SELECT * FROM " + sqlite_table)
+    columns = [x[0] for x in cur.description]
+    str1 = "=?, ".join(columns) + "=?"
+    str2 = "=? AND ".join(columns) + "=?"
+    cur.execute("UPDATE " + sqlite_table + " SET " + str1 + " WHERE " + str2, sql_edit)
     conn.commit()
     conn.close()
 
@@ -143,13 +78,25 @@ def view_products(sqlite_table,column,item,gui_table):
     #into the current gui_table.Configures even-numbered rows to have a grey background.
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
-    if item == "All":
-        cur.execute("SELECT * FROM \'" + sqlite_table + "\'")
+    if column == "All":
+        cur.execute("SELECT * FROM " + sqlite_table)
+    elif column == "barrel_no":
+        cur.execute("SELECT * FROM " + sqlite_table + " WHERE " + column + " LIKE \'" + item[:2] + "%\'")
+    elif 'date' in column:
+        cur.execute("SELECT * FROM " + sqlite_table + " WHERE " + column + " LIKE \'" + item[:4] + "%\'")
+    elif column == "age":
+        cur.execute("SELECT * FROM " + sqlite_table + " WHERE " + column + " LIKE \'" + item[0] + "%\'")
+    elif column == "product":
+        cur.execute("SELECT * FROM " + sqlite_table + " WHERE " + column + " LIKE \'" + item + "%\'")
     else:
-        cur.execute("SELECT * FROM \'" + sqlite_table + "\' WHERE " + column + "= \'" + item + "\'")
+        cur.execute("SELECT * FROM " + sqlite_table + " WHERE " + column + "= \'" + item + "\'")
     rows = cur.fetchall()
+    conn.close()
+
     for item in gui_table.get_children():
         gui_table.delete(item)
+
+    #row configuration
     for index,row in enumerate(rows):
         if (index % 2 == 0):
             tag = 'even'
@@ -196,7 +143,7 @@ def labels_view():
     labels_window.geometry("%dx%d+%d+%d" % (300,window_height,x,y))
     labels_window.resizable(0,0)
 
-def selection_check(sqlite_table,gui_table,edit_func,edit=True):
+def selection_check(sqlite_table,gui_table,view_fr,edit=True):
     #Checks to see if a gui_table selection has been made and returns the respective
     #action based on the gui_table
     item_values = gui_table.item(gui_table.selection())['values']
@@ -214,7 +161,7 @@ def selection_check(sqlite_table,gui_table,edit_func,edit=True):
         elif gui_table == inprog_tbl:
             Finish_View(window,item_values)
         else:
-            Edit_View(window,sqlite_table,gui_table,2,edit_func)
+            Edit_View(window,sqlite_table,gui_table,2,view_fr)
     else:
         messagebox.showerror("Selection Error","Please select an inventory item.")
 
@@ -235,16 +182,6 @@ def gui_table_sort(gui_table, column, reverse):
     # reverse sort next time
     gui_table.heading(column, text=column, command=lambda c=column: gui_table_sort(gui_table, c, not reverse))
 
-def total_calc(sqlite_table):
-    #Returns the sum of all values in a table's total column. Used by the
-    #Total_Label class to display the output.
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
-    cur.execute("SELECT SUM(amount*price) FROM " + sqlite_table)
-    total = list(cur)[0][0]
-    conn.close()
-    return total
-
 def cal_button(tplvl,date_entry):
     #Creates a toplevel window to provide a calendar date selection tool.
     tplvl.top = Toplevel(window)
@@ -262,15 +199,15 @@ def retrieve_date(tplvl,date_entry):
     date_entry.config(state="readonly")
     tplvl.top.destroy()
 
-#creates toplevel populated by inputs for items in table
 class Add_View(Toplevel):
     #A toplevel widget with labels corresponding to sqlite table columns and entry
     #widgets to insert data into the sqlite table.
-    def __init__(self,master,sqlite_table,gui_table,entry_col):
+    def __init__(self,master,sqlite_table,gui_table,entry_col,view_fr):
         self.window_height = 0
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
         self.entry_col = entry_col
+        self.view_fr = view_fr
         self.x = (screen_width/2) - (width/2) + 100
         self.y = ((screen_height/2) - (height/2)) + 50
         Toplevel.__init__(self,master=master)
@@ -358,7 +295,10 @@ class Add_View(Toplevel):
         self.conn.commit()
         self.conn.close()
         db_update()
-        view_products(self.sqlite_table,'null','All',self.gui_table)
+        try:
+            self.view_fr.rows.event_generate("<<ComboboxSelected>>")
+        except:
+            view_products(self.sqlite_table,'All','All',self.gui_table)
         self.destroy()
 
     def total_after(self):
@@ -390,14 +330,14 @@ class Add_View(Toplevel):
 class Edit_View(Add_View):
     #A toplevel widget with labels corresponding to sqlite table columns and entry
     #widgets to update data in sqlite table
-    def __init__(self,master,sqlite_table,gui_table,entry_col,edit_func):
+    def __init__(self,master,sqlite_table,gui_table,entry_col,view_fr):
         self.master = master
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
         self.entry_col = entry_col  #column location for entry widgets
-        self.edit_func = edit_func
+        self.view_fr = view_fr
         self.item_values = self.gui_table.item(self.gui_table.selection())['values']
-        Add_View.__init__(self,master,sqlite_table,gui_table,entry_col)
+        Add_View.__init__(self,master,sqlite_table,gui_table,entry_col,view_fr)
         self.title("Edit " + self.sqlite_table.replace("_"," ").title())
         self.title_frame.destroy()  #Remove add_view title frame
 
@@ -415,11 +355,11 @@ class Edit_View(Add_View):
 
         #button frame
         self.button_frame = Frame(self)
-        Button(self.button_frame,text="Edit Item",command = lambda : self.edit_selection(self.edit_func)).pack(side=LEFT,padx=5,pady=5)
+        Button(self.button_frame,text="Confirm",command=self.confirm).pack(side=LEFT,padx=5,pady=5)
         Button(self.button_frame,text="Cancel",command = lambda : self.destroy()).pack(side=LEFT,padx=5,pady=5)
         self.button_frame.grid(row=self.grid_size+1,column=0,columnspan=3)
 
-    def edit_selection(self,edit_func):
+    def confirm(self):
         #Work through Edit_View toplevel to find entry widgets and extract these values to be
         #updated in the given sqlite table. Uses db_update() to update certain
         #column values afterwards and view_products() to display the updated gui table.
@@ -435,9 +375,10 @@ class Edit_View(Add_View):
                 return
         self.current_values = [x.cget('text') for x in reversed(self.grid_slaves(column=1)) if (x.winfo_class() == 'Label')]
         self.changes = tuple(self.changes + self.current_values)
-        edit_func(self.changes)
+        edit_db(self.changes,self.sqlite_table)
         db_update()
-        view_products(self.sqlite_table,'null','All',self.gui_table)
+        self.view_fr.row_upd
+        view_products(self.sqlite_table,'All','All',self.gui_table)
         self.destroy()
 
 class Production_View(Toplevel):
@@ -565,11 +506,10 @@ class Production_View(Toplevel):
         self.conn.commit()
         self.conn.close()
         db_update()
-        view_products('raw_materials','null','All',raw_tbl)
+        view_products('raw_materials','All','All',raw_tbl)
         self.destroy()
 
     def cbox_check(self):
-
         #activate sample entry box and cases amount entry if checkbox is checked
         if self.check_var.get() == 1:
             self.samples_entry.config(state='normal')
@@ -741,21 +681,24 @@ class Purchase_Order(Toplevel):
          + self.new_po_num + ".xlsx",parent=self)
 
         if self.open_ques == 'no':
-            return
+            return self.total_after()
         else:
             self.after_cancel(self.after_func)  #stop after_func to ensure total_var value
             self.info_entries = [x.get() for x in reversed(self.info_fr.grid_slaves()) if x.winfo_class() == 'Entry']
             for entry in self.info_entries:
                 if not entry:
                     messagebox.showerror("Input Error","Please make sure all of the information entries have values.",parent=self)
-                    return
+                    return self.total_after()
             self.po_entries = [x.get() for x in reversed(self.order_fr.grid_slaves()) if (x.winfo_class() == 'Entry' or x.winfo_class() == "TCombobox")]
             self.complete_po_lists = [self.po_entries[x:x+5] for x in range(0,len(self.po_entries),5)]   #list of lists containing po order values
             self.filled_po_lists = []
             for list in self.complete_po_lists:
-                if all(list):
+                if any(list) and not all(list):
+                    messagebox.showerror("Input Error",
+                    "Please make sure all of the purchase order entries are fully complete.",parent=self)
+                    return self.total_after()
+                else:
                     self.filled_po_lists.append(list)
-
             self.wb = openpyxl.load_workbook('purchase_orders/blank_po.xlsx')
             self.sheet = self.wb['Purchase Order']
             self.font = Font(name='Times New Roman',size=12)
@@ -793,7 +736,7 @@ class Purchase_Order(Toplevel):
             self.conn.commit()
             self.conn.close()
             db_update()
-            view_products('purchase_orders','null','All',po_tbl)
+            view_products('purchase_orders','All','All',po_tbl)
 
             self.excel_file = os.getcwd() + "/purchase_orders/" + str(self.year) + "/" + self.new_po_num + ".xlsx"
             self.wb.save(self.excel_file)
@@ -861,7 +804,7 @@ class Finish_View(Toplevel):
                 self.conn.commit()
                 self.conn.close()
                 db_update()
-                view_products('in_progress','null','All',inprog_tbl)
+                view_products('in_progress','All','All',inprog_tbl)
                 self.destroy()
             else:
                 messagebox.showerror("Input Error",
@@ -870,7 +813,7 @@ class Finish_View(Toplevel):
         else:
             return
 
-class Grain_View(Toplevel):
+class Mash_Production_View(Toplevel):
 
     def __init__(self,master,mash_table):
         self.master = master
@@ -898,7 +841,6 @@ class Grain_View(Toplevel):
             self.mash_count = 0
             self.mash_letter = "A"
             self.prev_mash_type = None
-            pass
 
 
         #title frame
@@ -974,15 +916,15 @@ class Grain_View(Toplevel):
         if self.type == "Bourbon":
             for index,grain in enumerate(["Corn","Rye","Malted Barley"],1):
                 Label(self.grain_fr,text=grain).grid(row=index,column=0)
-                Entry(self.grain_fr).grid(row=index,column=1)
+                Entry(self.grain_fr,validate='key',validatecommand=(self.register(valid_dig),'%S','%d')).grid(row=index,column=1)
         elif self.type == "Rye":
             for index,grain in enumerate(["Rye","Malted Wheat"],1):
                 Label(self.grain_fr,text=grain).grid(row=index,column=0)
-                Entry(self.grain_fr).grid(row=index,column=1)
+                Entry(self.grain_fr,validate='key',validatecommand=(self.register(valid_dig),'%S','%d')).grid(row=index,column=1)
         elif self.type == "Malt":
             for index,grain in enumerate(["Malted Barley","Wheat","Oat"],1):
                 Label(self.grain_fr,text=grain).grid(row=index,column=0)
-                Entry(self.grain_fr).grid(row=index,column=1)
+                Entry(self.grain_fr,validate='key',validatecommand=(self.register(valid_dig),'%S','%d')).grid(row=index,column=1)
         elif self.type == "Rum":
             Label(self.grain_fr,text="N/A",width=10).grid(row=1,column=0)
             Entry(self.grain_fr,state="readonly").grid(row=1,column=1)
@@ -1056,7 +998,7 @@ class Grain_View(Toplevel):
             pass
 
         db_update()
-        view_products('grain','null','All',grain_tbl)
+        view_products('grain','All','All',grain_tbl)
         self.destroy()
 
     def grain_recur(self,type,amount):
@@ -1095,19 +1037,12 @@ class Grain_View(Toplevel):
 
 
 class Sheet_Label(Label):
-    '''Creates a clickable label with link to file in given file location.
-
-    Parameters:
-    master (Tk widget object):Tkinter widget to place label button within.
-    text (str):Text value to be displayed for the label.
-    file_location (str):Directory containing the file to be linked.
-    '''
-
+    #Creates a clickable label with link to file in given file location.
     def __init__(self,master,text,file_location):
 
         Label.__init__(self,master,text=text,cursor="hand2",font="Times 14 underline",fg="#0000EE")
         def button_click(event):
-            '''Changes label color from 'blue' to 'purple' and opens the file.'''
+            #Changes label color from 'blue' to 'purple' and opens the file.
             if self['fg'] =="#0000EE":
                 self['fg'] = "#551A8B"
             else:
@@ -1116,13 +1051,8 @@ class Sheet_Label(Label):
         self.bind("<Button-1>",func=button_click)
 
 class Command_Frame(Frame):
-    """Creates frame on the left side of the treeview tables. Used to place command
-    buttons for interacting with data.
-
-    Args:
-        master (Tk widget object):Parent widget of the Command_Frame
-    """
-
+    #Creates frame on the left side of the treeview tables. Used to place command
+    #buttons for interacting with data.
     def __init__(self,master):
         self.master = master
         self.height = height
@@ -1131,46 +1061,171 @@ class Command_Frame(Frame):
 
 class View_Frame(LabelFrame):
 
-    def __init__(self,master,sqlite_table,gui_table,labels):
+    def __init__(self,master,sqlite_table,gui_table):
         self.master = master
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
         self.height = int(screen_height/1.5)
-        self.labels = labels
+        self.text_var = StringVar()
         LabelFrame.__init__(self,master=self.master,height=self.height,bd=5,relief=RIDGE,text="View",font="bold")
+
+        #columns selector
         Label(self,text="Columns").grid(row=0,column=0)
-        self.column_vals = list(self.gui_table["columns"])
+        self.column_vals = [x for x in list(self.gui_table["columns"]) if
+                            (x not in ["Price","Total","Amount","Unit","Case Size",
+                            "Grains","Mash No","PO No.","Proof Gallons","Order No"])]
         self.column_vals.append("All")
         self.columns = ttk.Combobox(self,values=self.column_vals)
         self.columns.set(self.column_vals[-1])
         self.columns.config(width=18, background="white", justify='center', state='readonly')
         self.columns.bind("<<ComboboxSelected>>", self.col_upd)
         self.columns.grid(row=1,column=0,pady=5,padx=5)
+
+        #item selector
         Label(self,text="Values").grid(row=2,column=0)
         self.rows = ttk.Combobox(self,values=["N/A"])
         self.rows.set("N/A")
         self.rows.config(width=18, background="white", justify='center', state='readonly')
         self.rows.bind("<<ComboboxSelected>>", self.row_upd)
         self.rows.grid(row=3,column=0,pady=5,padx=5)
+
+        #total value label
+        if any(s in self.gui_table.columns for s in ('Price','Proof Gallons')): #check for price or 'proof gallons' column
+            Label(self,text="Inventory Value").grid(row=4,column=0)
+            Label(self,textvariable=self.text_var,bd=10,font="Arial 15 bold",fg="dark slate grey").grid(row=5,column=0)
+
+        self.rows.event_generate("<<ComboboxSelected>>")
         self.pack()
 
     def col_upd(self,event):
+        #update row-combobox values based on column selection
         self.column_val = self.columns.get().lower().replace(" ","_")
-        if self.columns.get() == "All":
-            self.rows.config(values="All")
-            self.rows.set("N/A")
-        else:
+        if self.column_val == "all":
+            self.value_rows = ["N/A"]
+        elif self.column_val == "barrel_no":
             self.conn = sqlite3.Connection("inventory.db")
             self.conn.row_factory = lambda cursor, row: row[0]
             self.cur = self.conn.cursor()
             self.cur.execute("SELECT " + self.column_val + " FROM " + self.sqlite_table)
-            self.value_rows = self.cur.fetchall()
-        self.conn.close()
+            self.value_rows = {x[:2] + "-XXX" for x in self.cur.fetchall()}
+            self.conn.close()
+        elif "date" in self.column_val: #get year from date value
+            self.conn = sqlite3.Connection("inventory.db")
+            self.conn.row_factory = lambda cursor, row: row[0]
+            self.cur = self.conn.cursor()
+            self.cur.execute("SELECT " + self.column_val + " FROM " + self.sqlite_table)
+            self.value_rows = {x[:4] for x in self.cur.fetchall()}
+            self.conn.close()
+        elif self.column_val == "age":
+            self.conn = sqlite3.Connection("inventory.db")
+            self.conn.row_factory = lambda cursor, row: row[0]
+            self.cur = self.conn.cursor()
+            self.cur.execute("SELECT " + self.column_val + " FROM " + self.sqlite_table)
+            self.value_rows = {x[0] + " year(s)" for x in self.cur.fetchall()}
+            self.conn.close()
+        elif self.column_val == "product":
+            self.conn = sqlite3.Connection("inventory.db")
+            self.conn.row_factory = lambda cursor, row: row[0]
+            self.cur = self.conn.cursor()
+            self.cur.execute("SELECT " + self.column_val + " FROM " + self.sqlite_table)
+            self.value_rows = {x for x in self.cur.fetchall()}
+            self.value_rows = list(self.value_rows)
+            for ind,item in zip(range(len(self.value_rows)),self.value_rows):
+                self.mo = re.search("\d",item)
+                if self.mo: #strip value at location of first digit
+                    self.value_rows[ind] = self.value_rows[ind][0:self.mo.start() - 1]
+                else:
+                    continue
+            self.value_rows = set(self.value_rows)
+            self.conn.close()
+        else:
+            try:
+                self.conn = sqlite3.Connection("inventory.db")
+                self.conn.row_factory = lambda cursor, row: row[0]
+                self.cur = self.conn.cursor()
+                self.cur.execute("SELECT " + self.column_val + " FROM " + self.sqlite_table)
+                self.value_rows = {x for x in self.cur.fetchall()}
+                self.conn.close()
+            except (sqlite3.OperationalError, IndexError):
+                self.value_rows = ["N/A"]
+        self.value_rows = list(self.value_rows)
+        self.value_rows.sort()
         self.rows.config(values=self.value_rows)
         self.rows.set(self.value_rows[0])
+        self.rows.event_generate("<<ComboboxSelected>>")
 
     def row_upd(self,event):
-        pass
+        #Update gui_table and total calculation based on row selection
+        self.row_val = self.rows.get()
+        if self.row_val == "N/A":
+            view_products(self.sqlite_table,"All","All",self.gui_table)
+            self.total_calc()
+        else:
+            view_products(self.sqlite_table,self.column_val,self.row_val,self.gui_table)
+            self.total_calc()
+
+    def total_calc(self):
+        #Returns the sum of all values in a table's chosen column. Used by the
+        #View_Frame class to display output.
+        self.total = 0
+        if self.sqlite_table == "barrels":
+            self.pg_ind = self.gui_table.columns.index("Proof Gallons")
+            for child in self.gui_table.get_children():
+                self.total += float(self.gui_table.item(child)["values"][self.pg_ind])
+        try:
+            self.price_ind = self.gui_table.columns.index("Price")
+            self.amount_ind = self.gui_table.columns.index("Amount")
+            for child in self.gui_table.get_children():
+                self.total += float(self.gui_table.item(child)["values"][self.price_ind]) * float(self.gui_table.item(child)["values"][self.amount_ind])
+        except:
+            try:
+                self.price_ind = self.gui_table.columns.index("Price")
+                for child in self.gui_table.get_children():
+                    self.total += float(self.gui_table.item(child)["values"][self.price_ind])
+            except:
+                pass
+        try:
+            self.text = "{0:,.2f}".format(self.total)
+            self.text_var.set("$%s" % (self.text))
+        except:
+            self.text_var.set("$0.00")
+
+class Cogs_View(Toplevel):
+
+    def __init__(self,master,sqlite_table,gui_table):
+        self.master = master
+        self.sqlite_table = sqlite_table
+        self.gui_table = gui_table
+        self.x = x
+        self.y = y
+        Toplevel.__init__(self,master=self.master)
+
+        self.whiskey_fr = LabelFrame(self,text="Whiskey COGS")
+        self.rum_fr = LabelFrame(self,text="Rum COGS")
+
+        self.conn = sqlite3.Connection("inventory.db")
+        self.cur = self.conn.cursor()
+        self.cur.execute("SELECT * FROM estimated_cogs")
+        self.cogs_values = self.cur.fetchall()
+        self.conn.close()
+        self.cogs_labels = ["Raw Materials","Energy","Labor","Error","Total Per Bottle",
+                            "Bond Ins.","Storage","Mult Factor","Total Per PG"]
+
+        for frame,l in zip([self.whiskey_fr,self.rum_fr],self.cogs_values):
+            for ind,item,desc in zip(range(len(l)),l,self.cogs_labels):
+                Label(frame,text=desc).grid(row=ind,column=0)
+                self.ent = Entry(frame,justify="center")
+                self.ent.insert(0,item)
+                self.ent.grid(row=ind,column=1)
+
+        self.whiskey_fr.pack(anchor="w")
+        self.rum_fr.pack(anchor="n")
+
+        self.title("COGS")
+        self.geometry("%dx%d+%d+%d" % (400,240,self.x,self.y))
+        self.resizable(0,0)
+        self.focus()
+
 
 class Option_Frame(LabelFrame):
 
@@ -1179,16 +1234,8 @@ class Option_Frame(LabelFrame):
         self.height = height
         LabelFrame.__init__(self,master=self.master,text="Options",height=self.height,relief=RIDGE,font="bold",bd=5)
 
-#gives production buttons functionality
-class Inventory_Button(Button):
-
-    def __init__(self,master,text,sqlite_table,gui_table):
-        self.sqlite_table = sqlite_table
-        self.gui_table = gui_table
-        Button.__init__(self,master,text=text,width=20,height=1,font=('Calibri',12,'bold'))
-
 class Logistics_Button(Button):
-
+    #command frame button
     def __init__(self,master,text,sqlite_table,gui_table,command):
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
@@ -1196,7 +1243,7 @@ class Logistics_Button(Button):
         self.pack(anchor='center')
 
 class Treeview_Table(ttk.Treeview):
-
+    #creates a gui_table
     def __init__(self,master,columns):
         ttk.Treeview.__init__(self,master,columns=columns,show='headings',height=600,style="Custom.Treeview")
         self.width=int(table_width/(len(columns)))
@@ -1205,25 +1252,6 @@ class Treeview_Table(ttk.Treeview):
             self.column(self.columns[i],anchor='center',width=self.width)
             self.heading(str('#' + str((i+1))),text=self.columns[i],command = lambda col=self.columns[i]: gui_table_sort(self,col, False))
         self.pack(side=RIGHT,fill=BOTH,expand=1)
-
-class Total_Label(LabelFrame):
-
-    def __init__(self,sqlite_table,master):
-        self.sqlite_table = sqlite_table
-        self.master = master
-        self.text_var = StringVar()
-        LabelFrame.__init__(self,master,height=height,width=command_width,text="Inventory Value",bd=5,relief=RIDGE,font="bold")
-        self.total_after()
-        Label(self,textvariable=self.text_var,bd=10,font="Arial 15 bold",fg="dark slate grey").pack(fill=BOTH)
-        self.pack(side=BOTTOM,fill=X)
-
-    def total_after(self):
-        try:
-            self.text = "{0:,.2f}".format(total_calc(self.sqlite_table))
-            self.text_var.set("$%s" % (self.text))
-        except:
-            self.text_var.set("$0.00")
-        self.after(150,self.total_after)
 
 #used to search for the string literal within a filename that occurs before the file extension (Ex. '.txt')
 fileRegex = re.compile(r'''
@@ -1239,6 +1267,7 @@ poRegex = re.compile(r'''
     (.)
     ([a-zA-Z_0-9]+)''',re.VERBOSE)
 
+#used to find important parts of mash number strings
 mashRegex = re.compile(r'''
     (^\d{4})
     (/)
@@ -1269,8 +1298,8 @@ def valid_dec(str,cur_str,act):
 
 #option values for dropdown menus
 type_options = {'raw_materials': ['Bottles','Boxes','Caps','Capsules','Labels'],
- 'bottles': ['Vodka','Whiskey','Rum','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other'],
-  'grain': ['Corn','Rye','Malted Barley','Malted Wheat','Oat'], 'samples':['Vodka','Whiskey','Rum','Other'],
+ 'bottles': ['Vodka','Whiskey','Rum','Seltzer','Other'], 'barrels': ['Bourbon','Rye','Malt','Rum','Other'],
+  'grain': ['Corn','Rye','Malted Barley','Malted Wheat','Oat'], 'samples':['Vodka','Whiskey','Rum','Seltzer','Other'],
    'mashes': ['Bourbon','Rye','Malt','Rum','Other'], 'grain_log': ['Corn','Rye','Malted Barley','Malted Wheat','Oat']}
 
 #create root window, resize based on user's screen info
@@ -1323,19 +1352,19 @@ bott_fr = ttk.Frame(bottinv_nb)
 samp_fr = ttk.Frame(bottinv_nb)
 
 bottinv_nb.add(raw_fr, text="Raw Materials",padding=10)
-raw_fr.bind('<Visibility>',lambda event: view_products('raw_materials','null','All',raw_tbl))
+raw_fr.bind('<Visibility>',lambda event: view_products('raw_materials','All','All',raw_tbl))
 
 bottinv_nb.add(prod_fr, text="Production Log",padding=10)
-prod_fr.bind('<Visibility>',lambda event: view_products('production','null','All',prod_tbl))
+prod_fr.bind('<Visibility>',lambda event: view_products('production','All','All',prod_tbl))
 
 bottinv_nb.add(inprog_fr,text="In Progress",padding=10)
-inprog_fr.bind('<Visibility>',lambda event: view_products('in_progress','null','All',inprog_tbl))
+inprog_fr.bind('<Visibility>',lambda event: view_products('in_progress','All','All',inprog_tbl))
 
 bottinv_nb.add(bott_fr, text="Bottle Inventory",padding=10)
-bott_fr.bind('<Visibility>',lambda event: view_products('bottles','null','All',bott_tbl))
+bott_fr.bind('<Visibility>',lambda event: view_products('bottles','All','All',bott_tbl))
 
 bottinv_nb.add(samp_fr,text="Samples",padding=10)
-samp_fr.bind('<Visibility>',lambda event: view_products('samples','null','All',samp_tbl))
+samp_fr.bind('<Visibility>',lambda event: view_products('samples','All','All',samp_tbl))
 
 bottinv_nb.pack(side=BOTTOM,fill=BOTH,expand=1)
 
@@ -1343,12 +1372,12 @@ raw_tbl = Treeview_Table(raw_fr,("Type","Product","Amount","Price","Total"))
 
 #create raw materials command frame and populate with view and options buttons
 raw_cfr = Command_Frame(raw_fr)
-raw_vfr = View_Frame(raw_cfr,'raw_materials',raw_tbl,["Bottles","Boxes","Caps","Capsules","Labels","All"])
+raw_vfr = View_Frame(raw_cfr,'raw_materials',raw_tbl)
 raw_optfr = Option_Frame(raw_cfr)
-Logistics_Button(raw_optfr,"Add Item",'raw_materials',raw_tbl,lambda: Add_View(window,'raw_materials',raw_tbl,1))
+Logistics_Button(raw_optfr,"Add Item",'raw_materials',raw_tbl,lambda: Add_View(window,'raw_materials',raw_tbl,1,raw_vfr))
 Logistics_Button(raw_optfr,"Production",'raw_materials',raw_tbl,lambda: Production_View(window,'bottles',raw_tbl))
-Logistics_Button(raw_optfr,"Edit Selection",'raw_materials',raw_tbl,lambda: selection_check('raw_materials',raw_tbl,raw_edit))
-Total_Label("raw_materials",raw_cfr)
+Logistics_Button(raw_optfr,"Edit Selection",'raw_materials',raw_tbl,lambda: selection_check('raw_materials',raw_tbl,raw_vfr))
+
 raw_optfr.pack()
 raw_cfr.pack(padx=10)
 
@@ -1356,7 +1385,7 @@ raw_cfr.pack(padx=10)
 prod_tbl = Treeview_Table(prod_fr,("Date","Product","Amount"))
 prod_cfr = Command_Frame(prod_fr)
 prod_optfr = Option_Frame(prod_cfr)
-Logistics_Button(prod_optfr,"Edit Selection",'production',prod_tbl,lambda: selection_check('production',prod_tbl,production_edit))
+Logistics_Button(prod_optfr,"Edit Selection",'production',prod_tbl,lambda: selection_check('production',prod_tbl,None))
 prod_optfr.pack()
 prod_cfr.pack(padx=10)
 
@@ -1364,30 +1393,28 @@ prod_cfr.pack(padx=10)
 inprog_tbl = Treeview_Table(inprog_fr,("Date","Product","Amount","Description"))
 inprog_cfr = Command_Frame(inprog_fr)
 inprog_optfr = Option_Frame(inprog_cfr)
-Logistics_Button(inprog_optfr,"Finish Selection",'in_progress',inprog_tbl,lambda: selection_check(None,inprog_tbl,None))
-Logistics_Button(inprog_optfr,"Edit Selection",'in_progress',inprog_tbl,lambda: selection_check('in_progress',inprog_tbl,in_progress_edit))
+Logistics_Button(inprog_optfr,"Finish Selection",'in_progress',inprog_tbl,lambda: selection_check(None,inprog_tbl,None,None))
+Logistics_Button(inprog_optfr,"Edit Selection",'in_progress',inprog_tbl,lambda: selection_check('in_progress',inprog_tbl))
 inprog_optfr.pack()
 inprog_cfr.pack(padx=10)
 
 #
 bott_tbl = Treeview_Table(bott_fr,("Type","Product","Amount","Case Size","Price","Total"))
 bott_cfr = Command_Frame(bott_fr)
-bott_vfr = View_Frame(bott_cfr,'bottles',bott_tbl,["Vodka","Whiskey","Rum","Other","All"])
+bott_vfr = View_Frame(bott_cfr,'bottles',bott_tbl)
 bott_optfr = Option_Frame(bott_cfr)
-Logistics_Button(bott_optfr,"Add Item",'bottles',bott_tbl,lambda: Add_View(window,'bottles',bott_tbl,1))
-Logistics_Button(bott_optfr,"Edit Selection",'bottles',bott_tbl,lambda: selection_check('bottles',bott_tbl,bottles_edit))
-Total_Label("bottles",bott_cfr)
+Logistics_Button(bott_optfr,"Add Item",'bottles',bott_tbl,lambda: Add_View(window,'bottles',bott_tbl,1,bott_vfr))
+Logistics_Button(bott_optfr,"Edit Selection",'bottles',bott_tbl,lambda: selection_check('bottles',bott_tbl,bott_vfr))
 bott_optfr.pack()
 bott_cfr.pack(padx=10)
 
 #
 samp_tbl = Treeview_Table(samp_fr,("Type","Product","Amount","Price","Total"))
 samp_cfr = Command_Frame(samp_fr)
-samp_vfr = View_Frame(samp_cfr,'samples',samp_tbl,["Vodka","Whiskey","Rum","Other","All"])
+samp_vfr = View_Frame(samp_cfr,'samples',samp_tbl)
 samp_optfr = Option_Frame(samp_cfr)
-Logistics_Button(samp_optfr,"Add Item",'samples',samp_tbl,lambda: Add_View(window,'samples',samp_tbl,1))
-Logistics_Button(samp_optfr,"Edit Selection",'samples',samp_tbl,lambda: selection_check('samples',samp_tbl,sample_edit))
-Total_Label('samples',samp_cfr)
+Logistics_Button(samp_optfr,"Add Item",'samples',samp_tbl,lambda: Add_View(window,'samples',samp_tbl,1,samp_vfr))
+Logistics_Button(samp_optfr,"Edit Selection",'samples',samp_tbl,lambda: selection_check('samples',samp_tbl,samp_vfr))
 samp_optfr.pack()
 samp_cfr.pack(padx=10)
 
@@ -1395,38 +1422,38 @@ samp_cfr.pack(padx=10)
 grain_nb = ttk.Notebook(window, height=height, width=width)
 grain_fr = ttk.Frame(grain_nb)
 grain_nb.add(grain_fr, text="Grain Inventory", padding=10)
-grain_fr.bind('<Visibility>',lambda event: view_products('grain','null','All',grain_tbl))
+grain_fr.bind('<Visibility>',lambda event: view_products('grain','All','All',grain_tbl))
 mash_fr = ttk.Frame(grain_nb)
 grain_nb.add(mash_fr, text="Mash Log", padding=10)
-mash_fr.bind('<Visibility>',lambda event: view_products('mashes','null','All',mash_tbl))
+mash_fr.bind('<Visibility>',lambda event: view_products('mashes','All','All',mash_tbl))
 grain_log_fr = ttk.Frame(grain_nb)
 grain_nb.add(grain_log_fr, text="Grain Log", padding=10)
-grain_log_fr.bind('<Visibility>',lambda event: view_products('grain_log','null','All',grain_log_tbl))
+grain_log_fr.bind('<Visibility>',lambda event: view_products('grain_log','All','All',grain_log_tbl))
 
 grain_tbl = Treeview_Table(grain_fr,("Order No","Type","Amount","Price","Total"))
 grain_cfr = Command_Frame(grain_fr)
+grain_vfr = View_Frame(grain_cfr,'grain',grain_tbl)
 grain_optfr = Option_Frame(grain_cfr)
-Logistics_Button(grain_optfr,"Produce Mash",'grain',grain_tbl,command=lambda: Grain_View(window,mash_tbl))
+Logistics_Button(grain_optfr,"Produce Mash",'grain',grain_tbl,command=lambda: Mash_Production_View(window,mash_tbl))
 Logistics_Button(grain_optfr,"Mash Production Sheet",'grain',grain_tbl,None)
-Logistics_Button(grain_optfr,"Add Grain",'grain',grain_tbl,lambda: Add_View(window,'grain',grain_tbl,1))
-Logistics_Button(grain_optfr,"Edit Selection",'grain',grain_tbl, lambda: selection_check('grain',grain_tbl,grain_edit))
-Total_Label('grain',grain_cfr)
+Logistics_Button(grain_optfr,"Add Grain",'grain',grain_tbl,lambda: Add_View(window,'grain',grain_tbl,1,grain_vfr))
+Logistics_Button(grain_optfr,"Edit Selection",'grain',grain_tbl, lambda: selection_check('grain',grain_tbl,grain_vfr))
 grain_optfr.pack()
 grain_cfr.pack(padx=10)
 
 mash_tbl = Treeview_Table(mash_fr,("Date","Mash No","Type","Grains"))
 mash_cfr = Command_Frame(mash_fr)
-mash_vfr = View_Frame(mash_cfr,'mashes',mash_tbl,["Bourbon","Rye","Malt","Other","All"])
+mash_vfr = View_Frame(mash_cfr,'mashes',mash_tbl)
 mash_optfr = Option_Frame(mash_cfr)
-Logistics_Button(mash_optfr,"Add Mash",'mashes',mash_tbl,lambda: Add_View(window,"mashes",mash_tbl,1))
-Logistics_Button(mash_optfr,"Edit Selection",'mashes',mash_tbl, lambda: selection_check('mashes',mash_tbl,mash_edit))
+Logistics_Button(mash_optfr,"Add Mash",'mashes',mash_tbl,lambda: Add_View(window,"mashes",mash_tbl,1,mash_vfr))
+Logistics_Button(mash_optfr,"Edit Selection",'mashes',mash_tbl, lambda: selection_check('mashes',mash_tbl,mash_vfr))
 mash_optfr.pack()
 mash_cfr.pack(padx=10)
 
 grain_log_tbl = Treeview_Table(grain_log_fr,("Finish Date","Type","Order No"))
 grain_log_cfr = Command_Frame(grain_log_fr)
 grain_log_optfr = Option_Frame(grain_log_cfr)
-Logistics_Button(grain_log_optfr,"Edit Selection",'grain_log',grain_log_tbl, lambda: selection_check('grain_log',grain_log_tbl,grain_log_edit))
+Logistics_Button(grain_log_optfr,"Edit Selection",'grain_log',grain_log_tbl, lambda: selection_check('grain_log',grain_log_tbl,None))
 grain_log_optfr.pack()
 grain_log_cfr.pack(padx=10)
 
@@ -1435,12 +1462,13 @@ barr_nb = ttk.Notebook(window, height=height, width=width)
 barr_fr = ttk.Frame(barr_nb)
 barr_nb.add(barr_fr, text="Barrel Inventory",padding=10)
 
-barr_tbl = Treeview_Table(barr_fr,("Barrel No","Type","Proof Gallons","Date Filled","Age","Investor"))
+barr_tbl = Treeview_Table(barr_fr,("Barrel No","Type","Gallons","Proof Gallons","Date Filled","Age","Investor"))
 barr_cfr = Command_Frame(barr_fr)
-barr_vfr = View_Frame(barr_cfr,'barrels',barr_tbl,["Bourbon","Rye","Malt","Other","All"])
+barr_vfr = View_Frame(barr_cfr,'barrels',barr_tbl)
 barr_optfr = Option_Frame(barr_cfr)
-Logistics_Button(barr_optfr,"Add Barrel",'barrels',barr_tbl,lambda: Add_View(window,'barrels',barr_tbl,1))
-Logistics_Button(barr_optfr,"Edit Selection",'barrels',barr_tbl, lambda: selection_check('barrels',barr_tbl,barrel_edit))
+Logistics_Button(barr_optfr,"Add Barrel",'barrels',barr_tbl,lambda: Add_View(window,'barrels',barr_tbl,1,barr_vfr))
+Logistics_Button(barr_optfr,"Update COGS",'barrels',barr_tbl,lambda: Cogs_View(window,'estimated_cogs',barr_tbl))
+Logistics_Button(barr_optfr,"Edit Selection",'barrels',barr_tbl, lambda: selection_check('barrels',barr_tbl,barr_vfr))
 barr_optfr.pack()
 barr_cfr.pack(padx=10)
 
@@ -1451,10 +1479,11 @@ po_nb.add(po_fr,text="Purchase Orders",padding=10)
 
 po_tbl = Treeview_Table(po_fr,("Date","Product","Amount","Unit","Price","Total","Destination","PO No."))
 po_cfr = Command_Frame(po_fr)
+po_vfr = View_Frame(po_cfr,'purchase_orders',po_tbl)
 po_optfr = Option_Frame(po_cfr)
 Logistics_Button(po_optfr,"Create Purchase Order",'purchase_orders',po_tbl,lambda: Purchase_Order(window))
 Logistics_Button(po_optfr,"View Purchase Order",'purchase_orders',po_tbl,lambda: selection_check(None,po_tbl,None,edit=False))
-Logistics_Button(po_optfr,"Edit Selection",'purchase_orders',po_tbl,lambda: selection_check('purchase_orders',po_tbl,po_edit))
+Logistics_Button(po_optfr,"Edit Selection",'purchase_orders',po_tbl,lambda: selection_check('purchase_orders',po_tbl,po_vfr))
 
 po_optfr.pack()
 po_cfr.pack(padx=10)
@@ -1476,14 +1505,14 @@ emptr_cfr.pack(padx=10)
 menubar = Menu(window)
 
 menu1 = Menu(menubar, tearoff=0)
-menu1.add_command(label="Raw Materials and Bottles", command=lambda: view_widget(window,bottinv_nb,BOTTOM,'raw_materials','null','All',raw_tbl))
-menu1.add_command(label="Grain", command=lambda: view_widget(window,grain_nb,BOTTOM,'grain','null','All',grain_tbl))
-menu1.add_command(label="Barrels", command=lambda: view_widget(window,barr_nb,BOTTOM,'barrels','null','All',barr_tbl))
+menu1.add_command(label="Raw Materials and Bottles", command=lambda: view_widget(window,bottinv_nb,BOTTOM,'raw_materials','All','All',raw_tbl))
+menu1.add_command(label="Grain", command=lambda: view_widget(window,grain_nb,BOTTOM,'grain','All','All',grain_tbl))
+menu1.add_command(label="Barrels", command=lambda: view_widget(window,barr_nb,BOTTOM,'barrels','All','All',barr_tbl))
 menubar.add_cascade(label="Inventory", menu=menu1)
 
 menu2 = Menu(menubar, tearoff=0)
-menu2.add_command(label="Purchase Orders", command=lambda: view_widget(window,po_nb,BOTTOM,'purchase_orders','null','All',po_tbl))
-menu2.add_command(label="Employee Transactions", command=lambda: view_widget(window,emptr_nb,BOTTOM,'employee_transactions','null','All',emptr_tbl))
+menu2.add_command(label="Purchase Orders", command=lambda: view_widget(window,po_nb,BOTTOM,'purchase_orders','All','All',po_tbl))
+menu2.add_command(label="Employee Transactions", command=lambda: view_widget(window,emptr_nb,BOTTOM,'employee_transactions','All','All',emptr_tbl))
 menubar.add_cascade(label="Shipping and Transactions",menu=menu2)
 
 menu3 = Menu(menubar, tearoff=0)
