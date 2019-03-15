@@ -1169,21 +1169,35 @@ class View_Frame(LabelFrame):
         #View_Frame class to display output.
         self.total = 0
         if self.sqlite_table == "barrels":
-            self.pg_ind = self.gui_table.columns.index("Proof Gallons")
-            for child in self.gui_table.get_children():
-                self.total += float(self.gui_table.item(child)["values"][self.pg_ind])
-        try:
-            self.price_ind = self.gui_table.columns.index("Price")
-            self.amount_ind = self.gui_table.columns.index("Amount")
-            for child in self.gui_table.get_children():
-                self.total += float(self.gui_table.item(child)["values"][self.price_ind]) * float(self.gui_table.item(child)["values"][self.amount_ind])
-        except:
             try:
-                self.price_ind = self.gui_table.columns.index("Price")
+                self.pg_ind = self.gui_table.columns.index("Proof Gallons")
+                self.type_ind = self.gui_table.columns.index("Type")
+                self.conn = sqlite3.Connection("inventory.db")
+                self.conn.row_factory = lambda cursor, row: row[8]
+                self.cur = self.conn.cursor()
+                self.cur.execute("SELECT * FROM 'estimated_cogs'")
+                self.cogs = self.cur.fetchall()
+                self.conn.close()
                 for child in self.gui_table.get_children():
-                    self.total += float(self.gui_table.item(child)["values"][self.price_ind])
+                    if self.gui_table.item(child)["values"][self.type_ind] == "Rum":
+                        self.total += float(self.gui_table.item(child)["values"][self.pg_ind]) * self.cogs[1]
+                    else:
+                        self.total += float(self.gui_table.item(child)["values"][self.pg_ind]) * self.cogs[0]
             except:
                 pass
+        else:
+            try:
+                self.price_ind = self.gui_table.columns.index("Price")
+                self.amount_ind = self.gui_table.columns.index("Amount")
+                for child in self.gui_table.get_children():
+                    self.total += float(self.gui_table.item(child)["values"][self.price_ind]) * float(self.gui_table.item(child)["values"][self.amount_ind])
+            except:
+                try:
+                    self.price_ind = self.gui_table.columns.index("Price")
+                    for child in self.gui_table.get_children():
+                        self.total += float(self.gui_table.item(child)["values"][self.price_ind])
+                except:
+                    pass
         try:
             self.text = "{0:,.2f}".format(self.total)
             self.text_var.set("$%s" % (self.text))
@@ -1196,12 +1210,12 @@ class Cogs_View(Toplevel):
         self.master = master
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
-        self.x = x
-        self.y = y
+        self.x = x + 100
+        self.y = y + 100
         Toplevel.__init__(self,master=self.master)
 
-        self.whiskey_fr = LabelFrame(self,text="Whiskey COGS")
-        self.rum_fr = LabelFrame(self,text="Rum COGS")
+        self.whiskey_fr = LabelFrame(self,text="Whiskey COGS",font="Arial 12 bold")
+        self.rum_fr = LabelFrame(self,text="Rum COGS",font="Arial 12 bold")
 
         self.conn = sqlite3.Connection("inventory.db")
         self.cur = self.conn.cursor()
@@ -1216,16 +1230,57 @@ class Cogs_View(Toplevel):
                 Label(frame,text=desc).grid(row=ind,column=0)
                 self.ent = Entry(frame,justify="center")
                 self.ent.insert(0,item)
+                if desc in ["Total Per Bottle","Total Per PG"]:
+                    self.ent.config(state="readonly")
                 self.ent.grid(row=ind,column=1)
 
-        self.whiskey_fr.pack(anchor="w")
-        self.rum_fr.pack(anchor="n")
+        self.whiskey_fr.grid(row=0,column=0,padx=5)
+        self.rum_fr.grid(row=0,column=1,padx=5)
 
+        #button frame
+        self.button_fr = Frame(self,pady=5)
+        Button(self.button_fr,text="Update",command=self.update).grid(row=0,column=0,padx=5)
+        Button(self.button_fr,text="Cancel",command=lambda: self.destroy()).grid(row=0,column=1,padx=5)
+        self.button_fr.grid(row=1,column=0,columnspan=2)
+
+        self.total_after()
         self.title("COGS")
-        self.geometry("%dx%d+%d+%d" % (400,240,self.x,self.y))
+        self.geometry("%dx%d+%d+%d" % (450,247,self.x,self.y))
         self.resizable(0,0)
         self.focus()
 
+    def update(self):
+
+        
+
+    def total_after(self):
+
+        def total_update():
+
+            for frame in [self.whiskey_fr,self.rum_fr]:
+                self.entries = [x for x in reversed(frame.grid_slaves(column=1))]
+                self.entries[4].config(state="normal")
+                self.entries[4].delete(0,END)
+                self.bot_total = 0
+                self.entries[8].config(state="normal")
+                self.entries[8].delete(0,END)
+                self.pg_total = 0
+                for entry in self.entries[:4]:
+                    self.bot_total += float(entry.get())
+                try:
+                    self.entries[4].insert(0,"%.2f" % self.bot_total)
+                    self.entries[4].config(state="readonly")
+                except:
+                    pass
+                self.pg_total = (self.bot_total * float(self.entries[7].get())) + float(self.entries[5].get()) + float(self.entries[6].get())
+                try:
+                    self.entries[8].insert(0,"%.2f" % self.pg_total)
+                    self.entries[8].config(state="readonly")
+                except:
+                    pass
+
+        total_update()
+        self.after(150,self.total_after)
 
 class Option_Frame(LabelFrame):
 
