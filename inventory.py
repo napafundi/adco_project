@@ -61,6 +61,10 @@ def database():
                 (date DATE, product TEXT, amount INTEGER, unit TEXT, price REAL,
                  total REAL, destination TEXT, 'po_number' TEXT)
                 """)
+    cur.execute("""CREATE TABLE IF NOT EXISTS 'pending_po'
+                (date DATE, product TEXT, amount INTEGER, unit TEXT, price REAL,
+                 total REAL, destination TEXT, 'po_number' TEXT)
+                """)
     cur.execute("""CREATE TABLE IF NOT EXISTS 'employee_transactions'
                 (date DATE, product TEXT, amount INTEGER, employee TEXT)
                 """)
@@ -77,7 +81,15 @@ def db_update():
                       SET total=PRINTF('%s%g', '$', amount*price)
                 """)
     cur.execute("""UPDATE 'bottles'
+                      SET amount=0
+                    WHERE amount<0
+                """)
+    cur.execute("""UPDATE 'bottles'
                       SET total=PRINTF('%s%g', '$', amount*price)
+                """)
+    cur.execute("""UPDATE 'samples'
+                      SET amount=0
+                    WHERE amount<0
                 """)
     cur.execute("""UPDATE 'samples'
                       SET total=PRINTF('%s%.2f', '$', amount*price)
@@ -246,6 +258,8 @@ def selection_check(sqlite_table, gui_table, view_fr, edit=True):
                     "There was an error opening Excel.", parent=window)
         elif gui_table == inprog_tbl:
             Finish_View(window, item_values)
+        elif (gui_table == pending_tbl and edit==False):
+            fulfill_pending(gui_table)
         else:
             Edit_View(window, sqlite_table, gui_table, 2, view_fr)
     else:
@@ -296,6 +310,17 @@ def retrieve_date(tplvl, date_entry):
     date_entry.insert(END, tplvl.cal.selection_get().strftime("%Y-%m-%d"))
     date_entry.config(state="readonly")
     tplvl.top.destroy()
+
+def fulfill_pending(gui_table):
+    po_num = gui_table.item(gui_table.selection())['values'][7]
+    print(po_num)
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("SELECT * " +
+                  "FROM 'pending_po' " +
+                 "WHERE po_number=\'" + po_num + "\'")
+    pos = cur.fetchall()
+    Purchase_Order_View
 
 
 class Add_View(Toplevel):
@@ -383,7 +408,7 @@ class Add_View(Toplevel):
                 .pack(side=LEFT, padx=5, pady=5))
         self.button_frame.grid(row=self.grid_size+1, column=0, columnspan=2)
 
-        self.title("Add to " + self.tplvl_title))
+        self.title("Add to " + self.tplvl_title)
         self.focus()
         self.geometry("+%d+%d" % (self.x, self.y))
         self.resizable(0,0)
@@ -799,13 +824,13 @@ class Production_View(Toplevel):
             self.desc_tl.grab_set()
 
 
-class Purchase_Order(Toplevel):
+class Purchase_Order_View(Toplevel):
     #Toplevel used to create purchase orders.  Updates purchase_order
     #and bottles/samples based on values retrieved from the toplevel.
-    def __init__(self,master):
+    def __init__(self, master):
         self.master = master
-        self.x = x + 150
-        self.y = y + 20
+        self.x = (screen_width/2) - 350
+        self.y = (screen_height/2) - 350
         self.conn = sqlite3.Connection("inventory.db")
         self.conn.row_factory = lambda cursor, row: row[0]
         self.cur = self.conn.cursor()
@@ -820,12 +845,13 @@ class Purchase_Order(Toplevel):
         self.title_fr.grid(row=0, column=0, columnspan=2, pady=5)
 
         #Frame containing purchase order shipment information.
-        self.info_fr = Frame(self,pady=5)
+        self.info_fr = Frame(self, pady=5)
         Label(self.info_fr, text="From:").grid(row=0, column=0, sticky=W)
         Label(self.info_fr, text="PO Number:").grid(row=1, column=0, sticky=W)
         Label(self.info_fr, text="To:").grid(row=2, column=0, sticky=W)
         Label(self.info_fr, text="PO Date:").grid(row=0, column=2, sticky=W)
-        Label(self.info_fr, text="Pick Up Date:").grid(row=1, column=2, sticky=W)
+        Label(self.info_fr, text="Pick Up Date:").grid(row=1, column=2,
+                                                       sticky=W)
         Entry(self.info_fr, justify='center').grid(row=0, column=1)
 
         #Search for last purchase order in corresponding year folder
@@ -853,12 +879,18 @@ class Purchase_Order(Toplevel):
         self.po_entry.insert(0, self.new_po_num)
         self.po_entry.grid(row=1, column=1)
         Entry(self.info_fr, justify='center').grid(row=2, column=1)
-        self.po_date = Entry(self.info_fr, justify='center')
-        self.po_date.insert(END, "yyyy-mm-dd")
+        self.po_date = Entry(self.info_fr, justify='center', state='readonly')
         self.po_date.grid(row=0, column=3)
-        self.pu_date = Entry(self.info_fr, justify='center')
-        self.pu_date.insert(END, "yyyy-mm-dd")
+        self.po_cal_link = Button(self.info_fr, image=cal_photo,
+                                  command=lambda: cal_button(self,self.po_date))
+        self.po_cal_link.image = cal_photo
+        self.po_cal_link.grid(row=0,column=4)
+        self.pu_date = Entry(self.info_fr, justify='center', state='readonly')
         self.pu_date.grid(row=1, column=3)
+        self.pu_cal_link = Button(self.info_fr, image=cal_photo,
+                                  command=lambda: cal_button(self,self.pu_date))
+        self.pu_cal_link.image = cal_photo
+        self.pu_cal_link.grid(row=1,column=4)
         self.info_fr.grid(row=1, column=0, columnspan=2)
 
         #Frame containing purchase order product information.
@@ -904,15 +936,21 @@ class Purchase_Order(Toplevel):
                          fg="white")
         self.order_fr.grid(row=2, column=0, columnspan=2, pady=5)
 
+        self.check_var = IntVar()
+        self.check_var.set(1)
+        self.check_b = Checkbutton(self, text="Pending Purchase Order",
+                                   variable=self.check_var)
+        self.check_b.grid(row=3, column=0, columnspan=2)
+
         self.btn_fr = Frame(self)
         (Button(self.btn_fr, text="Confirm", command=self.confirm)
                 .grid(row=0, column=0, padx=10))
         (Button(self.btn_fr, text="Cancel", command=lambda: self.destroy())
                 .grid(row=0, column=1, padx=10))
-        self.btn_fr.grid(row=3, column=0, columnspan=2, pady=5)
+        self.btn_fr.grid(row=4, column=0, columnspan=2, pady=5)
 
         self.total_after()
-        self.geometry("%dx%d+%d+%d" % (464, 610, self.x, self.y))
+        self.geometry("%dx%d+%d+%d" % (464, 650, self.x, self.y))
         self.resizable(0,0)
         self.focus()
 
@@ -943,9 +981,15 @@ class Purchase_Order(Toplevel):
         self.open_ques = messagebox.askquestion(
             "Purchase Order Confirmation",
             "Are you sure you want to confirm? Please make sure everything is "
-            + " entered correctly. Confirming will update inventory values and "
-            + " save the purchase order with the file name, "
-            + self.new_po_num + ".xlsx", parent=self)
+            + "entered correctly. Confirming will update inventory values and "
+            + "save the purchase order with the file name, "
+            + self.new_po_num + ".xlsx. \n \n"
+            + "If the 'Pending Purchase Order' checkbox is checked, "
+            + "the purchase order will be stored within the 'Pending' tab to "
+            + "be completed or removed at a later date. \n \n"
+            + "***IMPORTANT***  The PO-Number is calculated from completed "
+            + "purchase orders. If there are any pending purchase orders, "
+            + "please fulfill or cancel them before continuing.", parent=self)
 
         if self.open_ques == 'no':
             return self.total_after()
@@ -977,75 +1021,96 @@ class Purchase_Order(Toplevel):
                         "Please make sure all of the purchase order entries "
                         + "are fully complete.", parent=self)
                     return self.total_after()
-                else:
+                elif all(list):
                     self.filled_po_lists.append(list)
-            self.wb = openpyxl.load_workbook('purchase_orders/blank_po.xlsx')
-            self.sheet = self.wb['Purchase Order']
-            self.font = Font(name='Times New Roman', size=12)
-
-            #Get shipment information entry-values into list and input
-            #them into corresponding cells within the 'po' excel sheet.
-            self.info_cells = ['A9', 'K9', 'A12', 'A15', 'I15']
-            for entry,cell in zip(self.info_entries, self.info_cells):
-                self.sheet[cell] = entry
-                self.sheet[cell].font = self.font
-
-            #Get purchase order entry-values into list and input them
-            #into corresponding cells within the 'po' excel sheet.
-            self.excel_rows = ["A","B","D","J","M"]
-            self.excel_columns = range(18, 36)
-            self.index = 0
-            for i in self.excel_columns:
-                for j,k in zip(self.excel_rows, range(0,5)):
-                    self.cell = j + str(i)
-                    self.sheet[self.cell] = (
-                                          self.complete_po_lists[self.index][k])
-                    self.sheet[self.cell].font = self.font
-                self.index += 1
-            self.sheet['M36'] = self.total_var.get()
-
-            #Add purchase orders to 'purchase_orders' table.
-            self.conn = sqlite3.Connection("inventory.db")
-            self.cur = self.conn.cursor()
-            for po_list in self.filled_po_lists:
-                self.cur.execute("INSERT INTO 'purchase_orders' " +
-                                      "VALUES (?,?,?,?,?,?,?,?)",
-                                 (self.info_entries[3], po_list[2], po_list[0],
-                                  po_list[1], po_list[3], po_list[4],
-                                  self.info_entries[2], self.new_po_num))
-                if po_list[1] == "Cases":
-                    self.cur.execute("UPDATE 'bottles' " +
-                                        "SET amount=(amount - ?) " +
-                                      "WHERE product=?",
-                                     (po_list[0], po_list[2]))
                 else:
-                    self.cur.execute("UPDATE 'samples' " +
-                                        "SET amount=(amount - ?) " +
-                                      "WHERE product=?",
-                                     (po_list[0], po_list[2]))
-            self.conn.commit()
-            self.conn.close()
+                    continue
+
+            if self.check_var.get() == 1:
+                #Add purchase orders to 'pending_po' table.
+                self.conn = sqlite3.Connection("inventory.db")
+                self.cur = self.conn.cursor()
+                for po_list in self.filled_po_lists:
+                    self.cur.execute("INSERT INTO 'pending_po' " +
+                                          "VALUES (?,?,?,?,?,?,?,?)",
+                                     (self.info_entries[3], po_list[2],
+                                      po_list[0], po_list[1], po_list[3],
+                                      po_list[4], self.info_entries[2],
+                                      self.po_entry.get()))
+                self.conn.commit()
+                self.conn.close()
+            else:
+                self.wb = openpyxl.load_workbook(
+                         'purchase_orders/blank_po.xlsx')
+                self.sheet = self.wb['Purchase Order']
+                self.font = Font(name='Times New Roman', size=12)
+
+                #Get shipment information entry-values into list and
+                #input them into corresponding cells within the 'po'
+                #excel sheet.
+                self.info_cells = ['A9', 'K9', 'A12', 'A15', 'I15']
+                for entry,cell in zip(self.info_entries, self.info_cells):
+                    self.sheet[cell] = entry
+                    self.sheet[cell].font = self.font
+
+                #Get purchase order entry-values into list and input
+                #them into corresponding cells within the 'po' excel
+                #sheet.
+                self.excel_rows = ["A","B","D","J","M"]
+                self.excel_columns = range(18, 36)
+                self.index = 0
+                for i in self.excel_columns:
+                    for j,k in zip(self.excel_rows, range(0,5)):
+                        self.cell = j + str(i)
+                        self.sheet[self.cell] = (
+                                        self.complete_po_lists[self.index][k])
+                        self.sheet[self.cell].font = self.font
+                    self.index += 1
+                self.sheet['M36'] = self.total_var.get()
+
+                #Add purchase orders to 'purchase_orders' table.
+                self.conn = sqlite3.Connection("inventory.db")
+                self.cur = self.conn.cursor()
+                for po_list in self.filled_po_lists:
+                    self.cur.execute("INSERT INTO 'purchase_orders' " +
+                                          "VALUES (?,?,?,?,?,?,?,?)",
+                                     (self.info_entries[3], po_list[2],
+                                      po_list[0], po_list[1], po_list[3],
+                                      po_list[4], self.info_entries[2],
+                                      self.po_entry.get()))
+                    if po_list[1] == "Cases":
+                        self.cur.execute("UPDATE 'bottles' " +
+                                            "SET amount=(amount - ?) " +
+                                          "WHERE product=?",
+                                         (po_list[0], po_list[2]))
+                    else:
+                        self.cur.execute("UPDATE 'samples' " +
+                                            "SET amount=(amount - ?) " +
+                                          "WHERE product=?",
+                                         (po_list[0], po_list[2]))
+                self.conn.commit()
+                self.conn.close()
+                self.excel_file = (os.getcwd() + "/purchase_orders/"
+                                   + str(self.year) + "/" + self.new_po_num
+                                   + ".xlsx")
+                self.wb.save(self.excel_file)
+
+                self.open_ques = messagebox.askquestion(
+                    "Open the PO Excel File?",
+                    "Would you like to open the Purchase Order file in Excel? "
+                    + "This will allow you to print it now.")
+                if self.open_ques == "yes":
+                    try:
+                        os.system('start EXCEL.EXE ' + self.excel_file)
+                    except:
+                        messagebox.showerror(
+                            "Program Error",
+                            "There was an error opening Excel.", parent=self)
+                else:
+                    pass
+
             db_update()
             view_products('purchase_orders', 'All', 'All', po_tbl)
-
-            self.excel_file = (os.getcwd() + "/purchase_orders/"
-                               + str(self.year) + "/" + self.new_po_num
-                               + ".xlsx")
-            self.wb.save(self.excel_file)
-
-            self.open_ques = messagebox.askquestion(
-                "Open the PO Excel File?",
-                "Would you like to open the Purchase Order file in Excel? "
-                + "This will allow you to print it now.")
-            if self.open_ques == "yes":
-                try:
-                    os.system('start EXCEL.EXE ' + self.excel_file)
-                except:
-                    messagebox.showerror(
-                        "Program Error",
-                        "There was an error opening Excel.", parent=self)
-            else:
-                pass
             self.destroy()
 
 
@@ -1349,8 +1414,8 @@ class Mash_Production_View(Toplevel):
                            + "/production_sheets/Last_Mash_Log.docx")
 
         self.open_ques = messagebox.askquestion(
-            "Open the PO Excel File?",
-            "Would you like to open the Purchase Order file in Word? This will "
+            "Open the Mash Word File?",
+            "Would you like to open the Mash Log file in Word? This will "
             + "allow you to print it now.")
         if self.open_ques == "yes":
             try:
@@ -1407,6 +1472,7 @@ class Mash_Production_View(Toplevel):
                                           "VALUES (?,?,?)",
                                      (self.date_entry.get(),
                                       type,self.order_number))
+                    self.grain_order_nums.append(str(self.order_number))
                     return
                 else:
                     return
@@ -1423,6 +1489,7 @@ class Mash_Production_View(Toplevel):
                 self.grain_info_tbl.append([type,
                                             str(self.grain_amt),
                                             str(self.order_number)])
+                self.grain_order_nums.append(str(self.order_number))
                 self.grain_recur(type, self.grain_diff)
         else:
             messagebox.showerror(
@@ -1501,7 +1568,11 @@ class View_Frame(LabelFrame):
 
         #Total value label.
         if any(s in self.gui_table.columns for s in ('Price', 'Proof Gallons')):
-            Label(self, text="Inventory Value").grid(row=4, column=0)
+            if self.sqlite_table in ["purchase_orders","pending_po"]:
+                self.inv_label = "Transactions Value"
+            else:
+                self.inv_label = "Inventory Value"
+            Label(self, text=self.inv_label).grid(row=4, column=0)
             Label(self, textvariable=self.text_var, bd=10, font="Arial 15 bold",
                   fg="dark slate grey").grid(row=5, column=0)
 
@@ -2088,6 +2159,14 @@ barr_cfr.pack(padx=10)
 po_nb = ttk.Notebook(window, height=height, width=width)
 po_fr = Frame(po_nb)
 po_nb.add(po_fr, text="Purchase Orders", padding=10)
+po_fr.bind('<Visibility>',
+              lambda event:
+              view_products('purchase_orders', 'All', 'All', po_tbl))
+pending_fr = Frame(po_nb)
+po_nb.add(pending_fr, text="Pending Purchase Orders", padding=10)
+pending_fr.bind('<Visibility>',
+              lambda event:
+              view_products('pending_po', 'All', 'All', pending_tbl))
 
 po_tbl = Treeview_Table(po_fr, ("Date", "Product", "Amount", "Unit", "Price",
                                 "Total", "Destination", "PO No."))
@@ -2096,7 +2175,7 @@ po_vfr = View_Frame(po_cfr, 'purchase_orders', po_tbl)
 po_optfr = Option_Frame(po_cfr)
 Logistics_Button(po_optfr, "Create Purchase Order", 'purchase_orders', po_tbl,
                  lambda:
-                 Purchase_Order(window))
+                 Purchase_Order_View(window))
 Logistics_Button(po_optfr, "View Purchase Order", 'purchase_orders', po_tbl,
                  lambda:
                  selection_check(None, po_tbl, None, edit=False))
@@ -2105,6 +2184,22 @@ Logistics_Button(po_optfr, "Edit Selection", 'purchase_orders', po_tbl,
                  selection_check('purchase_orders', po_tbl, po_vfr))
 po_optfr.pack()
 po_cfr.pack(padx=10)
+
+pending_tbl = Treeview_Table(pending_fr, ("Date", "Product", "Amount", "Unit",
+                                          "Price", "Total", "Destination",
+                                          "PO No."))
+pending_cfr = Command_Frame(pending_fr)
+pending_vfr = View_Frame(pending_cfr, 'pending_po', pending_tbl)
+pending_optfr = Option_Frame(pending_cfr)
+Logistics_Button(pending_optfr, "Fulfill Purchase Order", 'pending_po',
+                 pending_tbl,
+                 lambda:
+                 selection_check('pending_po', pending_tbl, pending_vfr, False))
+Logistics_Button(pending_optfr, "Edit Selection", 'pending_po', pending_tbl,
+                 lambda:
+                 selection_check('pending_po', pending_tbl, pending_vfr))
+pending_optfr.pack()
+pending_cfr.pack(padx=10)
 
 emptr_nb = ttk.Notebook(window, height=height, width=width)
 emptr_fr = Frame(emptr_nb)
