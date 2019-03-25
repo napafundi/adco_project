@@ -1411,7 +1411,10 @@ class Mash_Production_View(Toplevel):
         self.type_entries = [x.get() for x
                              in reversed(self.type_fr.grid_slaves())
                              if x.winfo_class() == "Entry"]
-        self.entry_check = self.grain_amts + self.type_entries
+        self.order_nums = [x.get() for x
+                           in reversed(self.grain_fr.grid_slaves())
+                           if x.winfo_class() == "TCombobox"]
+        self.entry_check = self.grain_amts + self.type_entries + self.order_nums
         for entry in self.entry_check:
             if not entry:
                 messagebox.showerror(
@@ -1433,12 +1436,12 @@ class Mash_Production_View(Toplevel):
                 parent=self)
             return
 
-
         #Subtract grain amounts from inventory.
         self.conn = sqlite3.Connection("inventory.db")
         self.cur = self.conn.cursor()
-        for type,amount in zip(self.grain_types, self.grain_amts):
-            self.grain_recur(type, amount)
+        for type, amount, order_num in zip(self.grain_types, self.grain_amts,
+                                self.order_nums):
+            self.grain_recur(type, amount, order_num)
         self.cur.execute("INSERT INTO mashes " +
                               "VALUES (?,?,?,?)",
                          (self.date_entry.get(), self.mash_num_entry.get(),
@@ -1492,65 +1495,40 @@ class Mash_Production_View(Toplevel):
         view_products('grain', 'All', 'All', grain_tbl)
         self.destroy()
 
-    def grain_recur(self, type, amount):
+    def grain_recur(self, type, amount, order_num):
         #Subtract amounts from respective grain.  Begins with minimum
         #amount row, will then move to the next same-type grain entry if
         #need be.
-        self.cur.execute("SELECT MIN(amount) " +
+        self.cur.execute("SELECT amount, date " +
                            "FROM grain " +
-                          "WHERE type=?",
-                         (type, ))
+                          "WHERE type=? AND order_number=?",
+                         (type, order_num))
         self.grain_amt = list(self.cur)[0][0]
-        self.cur.execute("SELECT order_number,MIN(amount) " +
-                           "FROM grain " +
-                          "WHERE type=?",
-                         (type,))
-        self.order_number = list(self.cur)[0][0]
+        self.grain_date = list(self.cur)[0][1]
         if self.grain_amt:
             self.grain_diff = int(self.grain_amt) - int(amount)
-            if self.grain_diff >= 0:
+            if self.grain_diff > 0:
                 self.cur.execute("UPDATE grain " +
                                     "SET amount=? " +
                                   "WHERE type=? " +
-                                    "AND amount=?",
-                                 (self.grain_diff, type,self.grain_amt))
-                self.grain_info_tbl.append([type,
-                                            str(amount),
-                                            str(self.order_number)])
-                self.grain_order_nums.append(str(self.order_number))
-                self.cur.execute("SELECT MIN(amount) " +
-                                   "FROM grain " +
-                                  "WHERE type=?",
-                                 (type,))
-                self.grain_amt = list(self.cur)[0][0]
-                if self.grain_amt == 0:
-                    self.cur.execute("DELETE FROM grain " +
-                                           "WHERE type=? " +
-                                             "AND amount=?",
-                                     (type, self.grain_amt))
-                    self.cur.execute("INSERT INTO grain_log " +
-                                          "VALUES (?,?,?)",
-                                     (self.date_entry.get(),
-                                      type,self.order_number))
-                    self.grain_order_nums.append(str(self.order_number))
-                    return
-                else:
-                    return
+                                    "AND order_number=?",
+                                 (self.grain_diff, type, order_num))
             else:
                 self.cur.execute("DELETE FROM grain " +
                                        "WHERE type=? " +
-                                         "AND amount=?",
-                                 (type, self.grain_amt))
+                                         "AND order_number=?",
+                                 (type, order_num))
                 self.cur.execute("INSERT INTO grain_log " +
-                                      "VALUES (?,?,?)",
-                                 (self.date_entry.get(), type,
-                                  self.order_number))
+                                      "VALUES (?,?,?,?)",
+                                 (self.grain_date, self.date_entry.get(),
+                                  type, self.order_number))
+            self.grain_info_tbl.append([type,
+                                        str(amount),
+                                        str(order_num)])
+            self.grain_order_nums.append(str(order_num))
+            if self.grain_diff < 0:
                 self.grain_diff = abs(self.grain_diff)
-                self.grain_info_tbl.append([type,
-                                            str(self.grain_amt),
-                                            str(self.order_number)])
-                self.grain_order_nums.append(str(self.order_number))
-                self.grain_recur(type, self.grain_diff)
+                self.grain_recur(type, amount, )
         else:
             messagebox.showerror(
                 "Grain Error",
