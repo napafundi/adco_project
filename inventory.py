@@ -288,10 +288,12 @@ def gui_table_sort(gui_table, column, reverse):
     l = [(gui_table.set(k, column), k) for k
          in gui_table.get_children()]
     if '$' in l[0][0]:  #Check if column is 'total'
-        l.sort(key=lambda tup: float(tup[0][1:].replace(",", "")), reverse=reverse)
+        l.sort(key=lambda tup: float(tup[0][1:].replace(",", "")),
+               reverse=reverse)
     else:
         try:
-            l.sort(key=lambda tup: float(tup[0].replace(",","")), reverse=reverse)
+            l.sort(key=lambda tup: float(tup[0].replace(",","")),
+                   reverse=reverse)
         except ValueError:
             l.sort(key=lambda tup: tup[0], reverse=reverse)
 
@@ -886,10 +888,6 @@ class Production_View(Toplevel):
                 self.check_var.set(1)
                 self.cbox_check()
 
-            def disable_event():
-                #Prevent user from 'x'-ing out of sample-desc entry to
-                #prevent issue with confirm function.
-                pass
 
             def desc_set():
                 #Set description variable based on description text.
@@ -1238,7 +1236,7 @@ class Mash_Production_View(Toplevel):
         self.mash_table = mash_table
         self.x = x + 150
         self.y = y + 150
-        #Populated with lists of length 3 (grain,amt,order #) in grain_recur
+        #Populated with lists of length 3 (grain, amt, order #) in grain_recur
         self.grain_info_tbl = []
         Toplevel.__init__(self, master=self.master)
         #Get previous mash information.
@@ -1247,7 +1245,7 @@ class Mash_Production_View(Toplevel):
             self.cur = self.conn.cursor()
             self.cur.execute("SELECT mash_no, type " +
                                "FROM mashes " +
-                           "ORDER BY date " +
+                           "ORDER BY mash_no " +
                          "DESC LIMIT 1")
             self.prev_mash = list(self.cur)[0]
             self.prev_mash_num = self.prev_mash[0]
@@ -1314,7 +1312,6 @@ class Mash_Production_View(Toplevel):
         #Grain frame
         self.grain_fr = Frame(self, pady=5, padx=5, height=100, width=340)
         self.grain_fr.grid_propagate(0)
-        self.type_menu.event_generate("<<ComboboxSelected>>")
 
         self.button_fr = Frame(self, padx=10)
         (Button(self.button_fr, text="Confirm", command=self.confirm)
@@ -1327,6 +1324,7 @@ class Mash_Production_View(Toplevel):
         self.geometry("%dx%d+%d+%d" % (350, 240, self.x, self.y))
         self.resizable(0,0)
         self.focus()
+        self.type_menu.event_generate("<<ComboboxSelected>>")
 
     def mash_num_upd(self, prev_type, curr_type):
         self.mash_num_entry.delete(0, END)
@@ -1356,7 +1354,7 @@ class Mash_Production_View(Toplevel):
 
     def fill_frame(self, gr_lst):
 
-        for index,grain in enumerate(gr_lst,1):
+        for index, grain in enumerate(gr_lst,1):
             Label(self.grain_fr, text=grain).grid(row=index, column=0)
             (Entry(self.grain_fr, validate='key',
                    validatecommand=(self.register(valid_dig),
@@ -1387,6 +1385,7 @@ class Mash_Production_View(Toplevel):
             else:
                 self.fill_frame(["Molasses"])
         except KeyError:
+            self.destroy()
             messagebox.showerror(
                 "Grain Inventory Error",
                 "There was an issue retrieving the purchase order number for " +
@@ -1394,14 +1393,11 @@ class Mash_Production_View(Toplevel):
                 "Please make sure there is an inventory value for each type " +
                 "of grain needed in this mash. \n \n" +
                 "If you are receiving this message upon opening " +
-                "'Produce Mash', there is a missing grain for Bourbon.",
-                parent=self)
-            self.destroy()
+                "'Produce Mash', there is a missing grain for Bourbon.")
             return
         self.grain_fr.grid(row=2, column=0, columnspan=3)
 
     def confirm(self):
-        #Labels except title label.
         self.grain_types = [x.cget("text") for x
                             in reversed(self.grain_fr.grid_slaves())
                             if x.winfo_class() == "Label"][1:]
@@ -1446,7 +1442,7 @@ class Mash_Production_View(Toplevel):
                               "VALUES (?,?,?,?)",
                          (self.date_entry.get(), self.mash_num_entry.get(),
                          self.type_menu.get(),
-                         ", ".join(self.grain_order_nums)))
+                         ", ".join(self.order_nums)))
         self.conn.commit()
         self.conn.close()
 
@@ -1454,7 +1450,7 @@ class Mash_Production_View(Toplevel):
         self.info_table = self.document.tables[0]
         self.grain_table = self.document.tables[1]
 
-        for (row,info) in zip(self.info_table.rows,
+        for (row, info) in zip(self.info_table.rows,
                               [self.date_entry.get(),
                                self.type_menu.get(),
                                self.mash_num_entry.get()]):
@@ -1465,8 +1461,8 @@ class Mash_Production_View(Toplevel):
                         run.font.name = "Verdana"
                         run.font.size = Pt(14)
 
-        for (row,gr_list) in zip(self.grain_table.rows, self.grain_info_tbl):
-            for (cell,num) in zip(row.cells, range(3)):
+        for (row, gr_list) in zip(self.grain_table.rows, self.grain_info_tbl):
+            for (cell, num) in zip(row.cells, range(3)):
                 for para in cell.paragraphs:
                     para.text = gr_list[num]
                     for run in para.runs:
@@ -1495,16 +1491,16 @@ class Mash_Production_View(Toplevel):
         view_products('grain', 'All', 'All', grain_tbl)
         self.destroy()
 
-    def grain_recur(self, type, amount, order_num):
-        #Subtract amounts from respective grain.  Begins with minimum
-        #amount row, will then move to the next same-type grain entry if
-        #need be.
+    def grain_recur(self, type, amount, order_num, first=True):
+        #Subtract amounts from respective grain.
         self.cur.execute("SELECT amount, date " +
                            "FROM grain " +
                           "WHERE type=? AND order_number=?",
                          (type, order_num))
-        self.grain_amt = list(self.cur)[0][0]
-        self.grain_date = list(self.cur)[0][1]
+        self.grain_lst = list(self.cur)
+        print(self.grain_lst)
+        self.grain_amt = (self.grain_lst[0][0])
+        self.grain_date = (self.grain_lst[0][1])
         if self.grain_amt:
             self.grain_diff = int(self.grain_amt) - int(amount)
             if self.grain_diff > 0:
@@ -1521,14 +1517,21 @@ class Mash_Production_View(Toplevel):
                 self.cur.execute("INSERT INTO grain_log " +
                                       "VALUES (?,?,?,?)",
                                  (self.grain_date, self.date_entry.get(),
-                                  type, self.order_number))
-            self.grain_info_tbl.append([type,
-                                        str(amount),
-                                        str(order_num)])
-            self.grain_order_nums.append(str(order_num))
+                                  type, order_num))
+            if first == True:
+                self.grain_info_tbl.append([type,
+                                            str(amount),
+                                            str(order_num)])
+            elif first == False:
+                for lst in self.grain_info_tbl:
+                    print(lst)
+                    if lst[0] == type:
+                        print(lst[0])
+                        lst[2] = lst[2] + ", " + order_num
+                        self.order_nums.append(order_num)
             if self.grain_diff < 0:
                 self.grain_diff = abs(self.grain_diff)
-                self.grain_recur(type, amount, )
+                self.grain_recur_tplvl(type, order_num)
         else:
             messagebox.showerror(
                 "Grain Error",
@@ -1538,6 +1541,62 @@ class Mash_Production_View(Toplevel):
             self.conn.close()
             raise ValueError("Grain Error")
 
+    def grain_recur_tplvl(self, type, order_num):
+        #Toplevel to add another order number to fulfill grain amount
+        self.combox_values = [x for x
+                              in self.grain_ord_dict[type]
+                              if x != order_num]
+        if self.combox_values:
+            self.recur_tplvl = Toplevel(self)
+            (Label(self.recur_tplvl, text = "There is " + str(self.grain_diff)
+                   + "lbs. " + "of " + type + " left to be used, \n " +
+                  "please select another order number to subtract it from.")
+                  .grid(row=0, column=0, columnspan=2, pady=5))
+            self.new_ord_box = ttk.Combobox(self.recur_tplvl,
+                                            values=self.combox_values)
+            self.new_ord_box.config(width=16, background="white",
+                                      justify='center', state='readonly')
+            self.new_ord_box.set(self.combox_values[0])
+            self.new_ord_box.grid(row=1, column=0, columnspan=2, pady=5)
+            (Button(self.recur_tplvl, text="Confirm",
+                    command=lambda: self.recur_confirm(type))
+                    .grid(row=2, column=0, pady=5))
+            (Button(self.recur_tplvl, text="Cancel",
+                    command=lambda: self.recur_cancel())
+                    .grid(row=2, column=1, pady=5))
+            self.recur_tplvl.protocol("WM_DELETE_WINDOW", disable_event)
+            self.recur_tplvl.title("Production Description")
+            self.recur_tplvl.resizable(0,0)
+            self.recur_tplvl.geometry("+%d+%d" % (self.x + 60, self.y + 60))
+            self.recur_tplvl.focus()
+            self.recur_tplvl.grab_set()
+            self.wait_window(self.recur_tplvl)
+        else:
+            messagebox.showerror(
+                "Grain Error",
+                "There doesn't seem to be an inventory value for " + type +
+                ", or there isn't enough grain, please fix this and try again.",
+                parent=self)
+            self.conn.close()
+            raise ValueError("Grain Error")
+
+    def recur_cancel(self):
+        self.recur_tplvl.destroy()
+        self.conn.close()
+        raise ValueError("Grain Error")
+
+    def recur_confirm(self, type):
+        self.grain_recur(type, self.grain_diff, self.new_ord_box.get(),
+                         first=False)
+        self.recur_tplvl.destroy()
+
+def Reports_Frame(Frame):
+    #Creates frame containing inventory information from each sqlite
+    #table.
+    def __init__(self, master):
+
+        Frame.__init__(self, master)
+        ttk.Combobox(self, )
 
 class Sheet_Label(Label):
     #Creates a clickable label with link to file in given file location.
@@ -2098,6 +2157,12 @@ def valid_dec(str,cur_str,act):
         return str.isdigit()
 
 
+def disable_event():
+    #Prevent user from 'x'-ing out of sample-desc entry to
+    #prevent issue with confirm function.
+    pass
+
+
 #Option values for dropdown menus.
 type_options = {
     'raw_materials' : ['Bottles', 'Boxes', 'Caps', 'Capsules', 'Labels'],
@@ -2446,6 +2511,10 @@ Logistics_Button(emptr_optfr, "Delete Selection", 'employee_transactions',
 emptr_optfr.pack()
 emptr_cfr.pack(padx=10)
 
+reports_nb = ttk.Notebook(window, height=height, width=width)
+reports_fr = Frame(reports_nb)
+reports_nb.add(reports_fr, text="Monthly Report", padding=10)
+
 menubar = Menu(window)
 menu1 = Menu(menubar, tearoff=0)
 menu1.add_command(label="Raw Materials and Bottles",
@@ -2478,6 +2547,12 @@ menu3.add_command(label="Production Sheets",
                   command=lambda: file_view("production_sheets"))
 menu3.add_command(label="Case Labels", command=lambda: file_view("case_labels"))
 menubar.add_cascade(label="Files", menu=menu3)
+
+menu4 = Menu(menubar, tearoff=0)
+menu4.add_command(label="Monthly Reports",
+                  command=lambda: view_widget(window, reports_nb, BOTTOM, None,
+                                              'All', 'All', None))
+menubar.add_cascade(label="Analysis", menu=menu4)
 
 window.config(menu=menubar)
 window.mainloop()

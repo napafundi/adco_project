@@ -1,19 +1,3 @@
-import sqlite3
-
-
-conn = sqlite3.Connection("inventory.db")
-cur = conn.cursor()
-cur.execute("SELECT mash_no, type " +
-                   "FROM mashes " +
-               "ORDER BY date " +
-             "DESC LIMIT 1")
-prev_mash = list(cur)[0]
-prev_mash_num = prev_mash[0]
-prev_mash_type = prev_mash[1]
-conn.close()
-#Mash number regex matches.
-mo = mashRegex.search(prev_mash_num)
-year = mo.group(1)    #Prev mash's year.
-mash_count = mo.group(5)  #Prev mash's ID number.
-mash_letter = mo.group(6) #Prev mash's letter variable.
-mash_letters = list(string.ascii_uppercase[:8]) #Letters A-H
+mashes = ['2018/01-3A', '2018/01-3C','2018/01-3B','2019/02-3B','2017/12-3D','2019/02-3C','2019/03-1A','2019/03-2A','2019/03-3A']
+mashes.sort()
+print(mashes)
