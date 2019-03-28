@@ -11,6 +11,7 @@ from PIL import ImageTk
 import re
 from datetime import datetime
 from datetime import date
+import calendar
 import math
 import openpyxl
 from openpyxl.styles import Font
@@ -160,7 +161,8 @@ def view_widget(window, widget, location, sqlite_table, column, item,
     for widg in window.pack_slaves():
         widg.pack_forget()
     widget.pack(side=location, fill=BOTH, expand=1)
-    view_products(sqlite_table, column, item, gui_table)
+    if gui_table:
+        view_products(sqlite_table, column, item, gui_table)
 
 
 def view_products(sqlite_table, column, item, gui_table):
@@ -1590,13 +1592,41 @@ class Mash_Production_View(Toplevel):
                          first=False)
         self.recur_tplvl.destroy()
 
-def Reports_Frame(Frame):
+class Reports_Frame(Frame):
     #Creates frame containing inventory information from each sqlite
     #table.
     def __init__(self, master):
-
+        self.master = master
+        self.cur_year = datetime.now().year
+        self.cur_month_ind = datetime.now().month
+        self.year_choices = list(range(2019, self.cur_year + 1))
+        self.month_choices = list(calendar.month_abbr)
         Frame.__init__(self, master)
-        ttk.Combobox(self, )
+
+        self.year_fr = LabelFrame(self, text="YEAR", font="Arial 8 bold")
+        self.year_cmbo_box = ttk.Combobox(
+            self.year_fr, values=self.year_choices, state='readonly',
+            justify='center')
+        self.year_cmbo_box.set(self.cur_year)
+        self.year_cmbo_box.pack(padx=5, pady=5)
+        self.year_fr.grid(row=0, column=0, padx=5, pady=5)
+
+        self.month_fr = LabelFrame(self, text="MONTH", font="Arial 8 bold")
+        self.month_cmbo_box = ttk.Combobox(
+            self.month_fr, values=self.month_choices, state='readonly',
+            justify='center')
+        self.month_cmbo_box.set(self.month_choices[self.cur_month_ind])
+        self.month_cmbo_box.pack(padx=5, pady=5)
+        self.month_fr.grid(row=0, column=1, padx=5, pady=5)
+
+        self.total_fr = LabelFrame(self, text="Total Values",
+                                   font="Arial 10 bold", width=489,
+                                   labelanchor=N)
+        self.raw_mat = Label(self.total_fr, text="Raw Materials: ")
+        self.raw_mat.grid(row=0, column=0)
+        self.total_fr.grid(row=1, column=0, columnspan=2, padx=5, pady=5,
+                           sticky="NESW")
+
 
 class Sheet_Label(Label):
     #Creates a clickable label with link to file in given file location.
@@ -2512,7 +2542,7 @@ emptr_optfr.pack()
 emptr_cfr.pack(padx=10)
 
 reports_nb = ttk.Notebook(window, height=height, width=width)
-reports_fr = Frame(reports_nb)
+reports_fr = Reports_Frame(reports_nb)
 reports_nb.add(reports_fr, text="Monthly Report", padding=10)
 
 menubar = Menu(window)
