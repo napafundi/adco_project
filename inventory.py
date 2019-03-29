@@ -76,6 +76,9 @@ def database():
                 (date DATE, product TEXT, amount INTEGER, unit TEXT,
                  employee TEXT, destination TEXT)
                 """)
+    cur.execute("""CREATE TABLE IF NOT EXISTS 'monthly_reports'
+                (date DATE, inv_name TEXT, total REAL)
+                """)
     conn.commit()
     conn.close()
     db_update()
@@ -124,6 +127,10 @@ def db_update():
                 """)
     conn.commit()
     conn.close()
+
+def monthly_reports_update():
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
 
 
 def edit_db(sql_edit, sqlite_table, gui_table, view_fr, delete=False):
@@ -1623,6 +1630,7 @@ class Reports_Frame(Frame):
                                    font="Arial 10 bold", width=489,
                                    labelanchor=N)
         self.raw_mat = Label(self.total_fr, text="Raw Materials: ")
+        self.raw_mat_val = Label(self.total_fr)
         self.raw_mat.grid(row=0, column=0)
         self.total_fr.grid(row=1, column=0, columnspan=2, padx=5, pady=5,
                            sticky="NESW")
