@@ -77,7 +77,8 @@ def database():
                  employee TEXT, destination TEXT)
                 """)
     cur.execute("""CREATE TABLE IF NOT EXISTS 'monthly_reports'
-                (date DATE, inv_name TEXT, total REAL)
+                (date DATE, inv_name TEXT, total REAL,
+                 UNIQUE(date, inv_name) ON CONFLICT REPLACE)
                 """)
     conn.commit()
     conn.close()
@@ -129,8 +130,18 @@ def db_update():
     conn.close()
 
 def monthly_reports_update():
+    totals_tables = ['raw_materials', 'bottles', 'samples', 'grain',
+                     'purchase_orders']
+    monthly_totals = {}
     conn = sqlite3.Connection("inventory.db")
+    conn.row_factory = lambda cursor, row: row[0]
     cur = conn.cursor()
+    for table in totals_tables:
+        cur.execute("SELECT total " +
+                      "FROM " + table)
+        total = sum([float(x[1:].replace(",","")) for x in cur.fetchall()])
+        monthly_totals[table] = total
+    print(monthly_totals)
 
 
 def edit_db(sql_edit, sqlite_table, gui_table, view_fr, delete=False):
@@ -1630,8 +1641,12 @@ class Reports_Frame(Frame):
                                    font="Arial 10 bold", width=489,
                                    labelanchor=N)
         self.raw_mat = Label(self.total_fr, text="Raw Materials: ")
-        self.raw_mat_val = Label(self.total_fr)
         self.raw_mat.grid(row=0, column=0)
+        self.raw_mat_val = StringVar()
+        (Label(self.total_fr, textvariable=self.raw_mat_val)
+         .grid(row=0, column=1))
+        self.bottles = Label(self.total_fr, text="Bottles: ")
+        self.bottles.grid(row=1, column=0)
         self.total_fr.grid(row=1, column=0, columnspan=2, padx=5, pady=5,
                            sticky="NESW")
 
