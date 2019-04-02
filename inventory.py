@@ -18,6 +18,7 @@ from openpyxl.styles import Font
 import string
 from docx import Document
 from docx.shared import Pt
+import collections
 
 
 def database():
@@ -92,6 +93,9 @@ def db_update():
     cur.execute("""UPDATE 'raw_materials'
                       SET total=PRINTF('%s%g', '$', amount*price)
                 """)
+    cur.execute("""UPDATE 'raw_materials'
+                      SET price=PRINTF('%.2f', price)
+                """)
     cur.execute("""UPDATE 'bottles'
                       SET amount=0
                     WHERE amount<0
@@ -130,18 +134,102 @@ def db_update():
     conn.close()
 
 def monthly_reports_update():
+    #Update 'monthly_reports' table with current month and inventory
+    #values. Only select purchase orders from current month.
     totals_tables = ['raw_materials', 'bottles', 'samples', 'grain',
                      'purchase_orders']
     monthly_totals = {}
+    cur_date = datetime.today().strftime('%Y-%m')
     conn = sqlite3.Connection("inventory.db")
     conn.row_factory = lambda cursor, row: row[0]
     cur = conn.cursor()
     for table in totals_tables:
-        cur.execute("SELECT total " +
-                      "FROM " + table)
-        total = sum([float(x[1:].replace(",","")) for x in cur.fetchall()])
+        if table == 'purchase_orders':
+            cur.execute("SELECT total " +
+                          "FROM " + table +
+                        " WHERE pu_date " +
+                          "LIKE \'" + cur_date + "%\'")
+        else:
+            cur.execute("SELECT total " +
+                          "FROM " + table)
+        total = sum([float(x[1:].replace(",","")) for x
+                     in cur.fetchall()])
         monthly_totals[table] = total
-    print(monthly_totals)
+    conn.close()
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    cur.execute("SELECT * " +
+                  "FROM barrels")
+    barrel_vals = cur.fetchall()
+    cur.execute("""SELECT total_per_pg
+                     FROM estimated_cogs
+                """)
+    est_cogs = [x[0] for x in cur.fetchall()]
+    whisk_cogs = float(est_cogs[0])
+    rum_cogs = float(est_cogs[1])
+    whisk_total = 0
+    rum_total = 0
+    for barrel in barrel_vals:
+        if barrel[1] == 'Rum':
+            rum_total += float(barrel[3]) * rum_cogs
+        else:
+            whisk_total += float(barrel[3]) * whisk_cogs
+    monthly_totals['barreled_rum'] = ("%.2f" % rum_total)
+    monthly_totals['barreled_whiskey'] = ("%.2f" % whisk_total)
+    for key, value in monthly_totals.items():
+        value = ("%.2f" % float(value))
+        cur.execute("INSERT INTO monthly_reports " +
+                         "VALUES (?,?,?)",
+                         (cur_date, key, value))
+    conn.commit()
+    conn.close()
+
+
+def create_excel_inv():
+    #Populate inventory_template.xlsx with inventory values and save as
+    #new workbook.
+    #'inv table': 'total column index'
+    inventories = (('raw_materials', 4),
+                   ('bottles', 5),
+                   ('samples', 5),
+                   ('grain', 5),
+                   ('barrels', None),
+                   ('purchase_orders', 6))
+    inventories = collections.OrderedDict(inventories)
+    excel_file = (os.getcwd() + "/inventory_files/inventory_template.xlsx")
+    wb = openpyxl.load_workbook(excel_file)
+    sheets = wb.sheetnames
+    conn = sqlite3.Connection("inventory.db")
+    cur = conn.cursor()
+    for sheet, (inv, tot_col) in zip(sheets, inventories.items()):
+        active_sheet = wb[sheet]
+        cur.execute("SELECT * " +
+                      "FROM " + inv)
+        inv_values = cur.fetchall()
+        if len(inv_values) > 0:
+            for (indx, row) in enumerate(inv_values, 1):
+                try:
+                    row = list(row)
+                    # Strip $, remove commas
+                    row[tot_col] = float(row[tot_col][1:].replace(",",""))
+                    tot_col += 1    # Change index for excel column
+                    active_sheet.cell(indx, tot_col).number_format = '$#,##0.00'
+                except TypeError:
+                    pass
+                active_sheet.append(row)
+            last_row = len(inv_values) + 1
+            last_col = len(inv_values[0]) - 1
+            last_col = string.ascii_uppercase[last_col]
+            tbl_ref = "A1:" + str(last_col) + str(last_row)
+            tbl = openpyxl.worksheet.table.Table(displayName=inv, ref=tbl_ref)
+            style = openpyxl.worksheet.table.TableStyleInfo(
+                name="TableStyleMedium9", showFirstColumn=False,
+                showLastColumn=False, showRowStripes=True)
+            tbl.tableStyleInfo = style
+            active_sheet.add_table(tbl)
+    new_excel_file = os.getcwd() + "/inventory_files/inventory_1.xlsx"
+    wb.save(new_excel_file)
+    os.system('start EXCEL.EXE ' + new_excel_file)
 
 
 def edit_db(sql_edit, sqlite_table, gui_table, view_fr, delete=False):
@@ -355,6 +443,8 @@ def retrieve_date(tplvl, date_entry):
 
 
 def confirm_po(view_fr, info, purchase_orders, po_num):
+    #Insert purchase order info into 'purchase_orders' table and create
+    #excel file with purchase order info.
     year = datetime.now().year
     wb = openpyxl.load_workbook(
              'purchase_orders/blank_po.xlsx')
@@ -367,6 +457,8 @@ def confirm_po(view_fr, info, purchase_orders, po_num):
     for entry,cell in zip(info, info_cells):
         sheet[cell] = entry
         sheet[cell].font = font
+    #Get order values and input into table within purchase order excel
+    #file.
     excel_rows = ["A","B","D","J","M"]
     excel_columns = range(18, 36)
     index = 0
@@ -434,6 +526,8 @@ def confirm_po(view_fr, info, purchase_orders, po_num):
     view_fr.columns.event_generate("<<ComboboxSelected>>")
 
 def fulfill_pending(gui_table, view_fr):
+    #Remove pending purchase order from 'pending_po' table and input
+    #into 'purchase_orders'. Create an excel file with info.
     po_num = gui_table.item(gui_table.selection())['values'][8]
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
@@ -1080,8 +1174,8 @@ class Purchase_Order_View(Toplevel):
         #Updates total column entry values to be product of quantity and
         #price.  Sums total columns into final total column, total_var
         self.total_entries = [x for x
-                            in reversed(self.order_fr.grid_slaves(column=4))
-                            if x.winfo_class() == 'Entry']
+                              in reversed(self.order_fr.grid_slaves(column=4))
+                              if x.winfo_class() == 'Entry']
         self.total_sum = 0
         for entry,i in zip(self.total_entries,range(1, 19)):
             entry.delete(0, END)
@@ -1162,7 +1256,6 @@ class Purchase_Order_View(Toplevel):
             else:
                 confirm_po(po_vfr, self.info_entries,
                            self.complete_po_lists, self.po_entry.get())
-
             self.destroy()
 
 
@@ -1183,7 +1276,6 @@ class Finish_View(Toplevel):
                .pack())
         self.title_fr.grid(row=0, column=0, columnspan=2, pady=5)
 
-        #Product frame.
         self.prod_fr = Frame(self)
         (Label(self.prod_fr, text=self.product)
                .grid(row=0, column=0, columnspan=2))
@@ -1212,6 +1304,8 @@ class Finish_View(Toplevel):
         self.focus()
 
     def confirm(self):
+        #Update 'bottles' and 'samples' tables with newly created
+        #products. Remove info from 'in_progress' table.
         self.conf_quest = messagebox.askquestion(
             "Finish this product?",
             "Are you sure you want to confirm? Make sure everything is entered "
@@ -1250,7 +1344,7 @@ class Finish_View(Toplevel):
 
 
 class Mash_Production_View(Toplevel):
-
+    #Toplevel to input values for mash production.
     def __init__(self, master, mash_table):
         self.master = master
         self.mash_table = mash_table
@@ -1301,7 +1395,6 @@ class Mash_Production_View(Toplevel):
                .pack())
         self.title_fr.grid(row=0, column=0, columnspan=3)
 
-        #Type frame.
         self.type_fr = Frame(self)
         Label(self.type_fr, text="Mash Type:").grid(row=0, column=0)
         self.type_menu = ttk.Combobox(
@@ -1329,9 +1422,8 @@ class Mash_Production_View(Toplevel):
         self.cal_link.grid(row=2, column=2)
         self.type_fr.grid(row=1, column=0, columnspan=3)
 
-        #Grain frame
         self.grain_fr = Frame(self, pady=5, padx=5, height=100, width=340)
-        self.grain_fr.grid_propagate(0)
+        self.grain_fr.grid_propagate(0) #Frame size doesn't change
 
         self.button_fr = Frame(self, padx=10)
         (Button(self.button_fr, text="Confirm", command=self.confirm)
@@ -1347,11 +1439,14 @@ class Mash_Production_View(Toplevel):
         self.type_menu.event_generate("<<ComboboxSelected>>")
 
     def mash_num_upd(self, prev_type, curr_type):
+        #Update mash number entry based on current grain type and
+        #previous mash type.
         self.mash_num_entry.delete(0, END)
         if self.date_entry.get():
             self.month = self.date_entry.get()[5:7]
         else:
             self.month = '{:02d}'.format(datetime.now().month)
+        #ex 2019/03-4A
         self.new_batch_num = (str(self.year) + "/" + str(self.month) + "-"
                               + str(int(self.mash_count) + 1) + "A")
         #Handle new year case.
@@ -1373,7 +1468,8 @@ class Mash_Production_View(Toplevel):
                 self.mash_num_entry.insert(0, self.new_batch_num)
 
     def fill_frame(self, gr_lst):
-
+        #Update grain frame with grain types used for selected mash
+        #type.
         for index, grain in enumerate(gr_lst,1):
             Label(self.grain_fr, text=grain).grid(row=index, column=0)
             (Entry(self.grain_fr, validate='key',
@@ -1418,6 +1514,9 @@ class Mash_Production_View(Toplevel):
         self.grain_fr.grid(row=2, column=0, columnspan=3)
 
     def confirm(self):
+        #Subtract grain used from 'grain' table, update 'mash_log' based
+        #on entries. Create a 'mash log' word file with certain info
+        #filled out.
         self.grain_types = [x.cget("text") for x
                             in reversed(self.grain_fr.grid_slaves())
                             if x.winfo_class() == "Label"][1:]
@@ -1469,7 +1568,7 @@ class Mash_Production_View(Toplevel):
         #Word doc tables
         self.info_table = self.document.tables[0]
         self.grain_table = self.document.tables[1]
-
+        #Write info for top of file
         for (row, info) in zip(self.info_table.rows,
                               [self.date_entry.get(),
                                self.type_menu.get(),
@@ -1480,7 +1579,7 @@ class Mash_Production_View(Toplevel):
                     for run in para.runs:
                         run.font.name = "Verdana"
                         run.font.size = Pt(14)
-
+        #Write info for grain table section of file
         for (row, gr_list) in zip(self.grain_table.rows, self.grain_info_tbl):
             for (cell, num) in zip(row.cells, range(3)):
                 for para in cell.paragraphs:
@@ -1506,13 +1605,14 @@ class Mash_Production_View(Toplevel):
                     "There was an error opening Word.", parent=self)
         else:
             pass
-
         db_update()
         view_products('grain', 'All', 'All', grain_tbl)
         self.destroy()
 
     def grain_recur(self, type, amount, order_num, first=True):
-        #Subtract amounts from respective grain.
+        #Subtract amounts from respective grain. Recursion occurs when
+        #a grain amount is zeroed out. User is asked for a second order
+        #number for that type of grain to subtract from.
         self.cur.execute("SELECT amount, date " +
                            "FROM grain " +
                           "WHERE type=? AND order_number=?",
@@ -1584,6 +1684,7 @@ class Mash_Production_View(Toplevel):
             (Button(self.recur_tplvl, text="Cancel",
                     command=lambda: self.recur_cancel())
                     .grid(row=2, column=1, pady=5))
+
             self.recur_tplvl.protocol("WM_DELETE_WINDOW", disable_event)
             self.recur_tplvl.title("Production Description")
             self.recur_tplvl.resizable(0,0)
@@ -1601,11 +1702,14 @@ class Mash_Production_View(Toplevel):
             raise ValueError("Grain Error")
 
     def recur_cancel(self):
+        #Button function to destroy toplevel and close sqlite connection
         self.recur_tplvl.destroy()
         self.conn.close()
         raise ValueError("Grain Error")
 
     def recur_confirm(self, type):
+        #Button function to destroy toplevel and run grain_recur with
+        #new inputs
         self.grain_recur(type, self.grain_diff, self.new_ord_box.get(),
                          first=False)
         self.recur_tplvl.destroy()
@@ -1620,12 +1724,14 @@ class Reports_Frame(Frame):
         self.year_choices = list(range(2019, self.cur_year + 1))
         self.month_choices = list(calendar.month_abbr)
         Frame.__init__(self, master)
+        monthly_reports_update()
 
         self.year_fr = LabelFrame(self, text="YEAR", font="Arial 8 bold")
         self.year_cmbo_box = ttk.Combobox(
             self.year_fr, values=self.year_choices, state='readonly',
             justify='center')
         self.year_cmbo_box.set(self.cur_year)
+        self.year_cmbo_box.bind("<<ComboboxSelected>>", self.year_upd)
         self.year_cmbo_box.pack(padx=5, pady=5)
         self.year_fr.grid(row=0, column=0, padx=5, pady=5)
 
@@ -1634,39 +1740,100 @@ class Reports_Frame(Frame):
             self.month_fr, values=self.month_choices, state='readonly',
             justify='center')
         self.month_cmbo_box.set(self.month_choices[self.cur_month_ind])
+        self.month_cmbo_box.bind("<<ComboboxSelected>>", self.month_upd)
         self.month_cmbo_box.pack(padx=5, pady=5)
         self.month_fr.grid(row=0, column=1, padx=5, pady=5)
 
-        self.total_fr = LabelFrame(self, text="Total Values",
-                                   font="Arial 10 bold", width=489,
-                                   labelanchor=N)
-        self.raw_mat = Label(self.total_fr, text="Raw Materials: ")
-        self.raw_mat.grid(row=0, column=0)
-        self.raw_mat_val = StringVar()
-        (Label(self.total_fr, textvariable=self.raw_mat_val)
-               .grid(row=0, column=1))
-        self.bottles = Label(self.total_fr, text="Bottles: ")
-        self.bottles.grid(row=1, column=0)
-        self.bottles_val = StringVar()
-        (Label(self.total_fr, textvariable=self.bottles_val)
-               .grid(row=1, column=1))
-        self.samples = Label(self.total_fr, text="Samples: ")
-        self.samples.grid(row=2, column=0)
-        self.samples_val = StringVar()
-        (Label(self.total_fr, textvariable=self.samples_val)
-               .grid(row=2, column=1))
-        self.grain = Label(self.total_fr, text="Grain: ")
-        self.grain.grid(row=3, column=0)
-        self.grain_val = StringVar()
-        (Label(self.total_fr, textvariable=self.grain_val)
-               .grid(row=3, column=1))
-        self.purch_ords = Label(self.total_fr, text="Purchase Orders: ")
-        self.purch_ords.grid(row=4, column=0)
-        self.po_val = StringVar()
-        (Label(self.total_fr, textvariable=self.po_val)
-               .grid(row=4, column=1))
-        self.total_fr.grid(row=1, column=0, columnspan=2, padx=5, pady=5,
+        self.invent_fr = LabelFrame(self, text="Inventory Values",
+                                   font="Arial 12 bold", fg="dark slate gray")
+        self.barrel_fr = LabelFrame(self, text="Barrel Values",
+                                    font="Arial 12 bold", fg="dark slate gray")
+
+        self.year_cmbo_box.event_generate("<<ComboboxSelected>>")
+
+    def year_upd(self, event):
+        #Generate combobox selection event for months, which will make
+        #changes to values displayed.
+        self.year_sel = self.year_cmbo_box.get()
+        self.month_cmbo_box.event_generate("<<ComboboxSelected>>")
+
+    def month_upd(self, event):
+        #Retrieve and display values from 'monthly_reports' table based
+        #on year and month selected.
+        self.month_sel = self.month_cmbo_box.get()
+        self.month_sel = self.month_choices.index(self.month_sel)
+        self.month_sel = "{:02}".format(self.month_sel)
+        self.date_sel = ("%s-%s") % (self.year_sel, self.month_sel)
+        #Inventory Values
+        self.conn = sqlite3.Connection("inventory.db")
+        self.conn.row_factory = lambda cursor, row: row[1:3]
+        self.cur = self.conn.cursor()
+        self.cur.execute("SELECT * " +
+                           "FROM monthly_reports " +
+                          "WHERE date=?",
+                          (self.date_sel,))
+        self.monthly_totals = self.cur.fetchall()
+        self.total_vals = [x for x in self.monthly_totals if
+                           x[0] not in ['barreled_rum', 'barreled_whiskey']]
+        self.barrel_vals = [x for x in self.monthly_totals if
+                            x[0] in ['barreled_rum', 'barreled_whiskey']]
+        self.conn.close()
+        for widg in [*self.invent_fr.grid_slaves(),
+                     *self.barrel_fr.grid_slaves()]:
+            widg.grid_forget()
+        if self.monthly_totals:
+            self.invent_sum = 0
+            self.grid_ind = 0
+            for index, tup in enumerate(self.total_vals):
+                self.invent_sum += float(tup[1])
+                self.grid_ind += 1
+                #ex. Purchase Orders:
+                self.txt1 = str(tup[0].replace("_"," ").title() + ":")
+                self.txt2 = "${0:,.2f}".format(tup[1])
+                (Label(self.invent_fr, text=self.txt1, font="Arial 10 bold")
+                       .grid(row=index, column=0, padx=20, sticky="W"))
+                (Label(self.invent_fr, text=self.txt2, font="Arial 10 bold",
+                       borderwidth=1, relief="solid", width=9)
+                       .grid(row=index, column=1, ipadx=20, sticky="E"))
+            (Label(self.invent_fr, text="Total:", font="Arial 12 bold")
+                   .grid(row=self.grid_ind, column=0, padx=20, sticky="W"))
+            (Label(self.invent_fr, text="${0:,.2f}".format(self.invent_sum),
+                   font="Arial 12 bold", borderwidth=2, relief="solid",
+                   width=10)
+                   .grid(row=self.grid_ind, column=1, ipadx=20, sticky="E"))
+            # Force widget to fill column
+            self.invent_fr.columnconfigure(0, weight=1)
+            self.invent_fr.columnconfigure(1, weight=1)
+            #Barrel Values
+            self.barrel_sum = 0
+            for index, tup in enumerate(self.barrel_vals):
+                self.barrel_sum += float(tup[1])
+                self.txt1 = str(tup[0].replace("_"," ").title() + ":")
+                self.txt2 = "${0:,.2f}".format(tup[1])
+                (Label(self.barrel_fr, text=self.txt1, font="Arial 10 bold")
+                       .grid(row=index, column=0, padx=20, sticky="W"))
+                (Label(self.barrel_fr, text=self.txt2,
+                       font="Arial 10 bold", borderwidth=1, relief="solid", width=9)
+                       .grid(row=index, column=1, ipadx=20, sticky="E"))
+            (Label(self.barrel_fr, text="Total:", font="Arial 12 bold")
+                   .grid(row=2, column=0, padx=20, sticky="W"))
+            (Label(self.barrel_fr, text="${0:,.2f}".format(self.barrel_sum),
+                   font="Arial 12 bold", borderwidth=2, relief="solid", width=10)
+                   .grid(row=2, column=1, ipadx=20, sticky="E"))
+            self.barrel_fr.columnconfigure(0, weight=1)
+            self.barrel_fr.columnconfigure(1, weight=1)
+        else:
+            (Label(self.invent_fr, text="N/A", font="Arial 30 bold",
+                   fg="gray")
+                   .grid(row=0, column=0, columnspan=2))
+            (Label(self.barrel_fr, text="N/A", font="Arial 30 bold",
+                   fg="gray")
+                   .grid(row=0, column=0, columnspan=2))
+
+        self.invent_fr.grid(row=1, column=0, columnspan=2, padx=5, pady=5,
                            sticky="NESW")
+        self.barrel_fr.grid(row=2, column=0, columnspan=2, padx=5, pady=5,
+                            sticky="NESW")
 
 
 class Sheet_Label(Label):
@@ -1698,7 +1865,9 @@ class Command_Frame(Frame):
 
 
 class View_Frame(LabelFrame):
-
+    #Frame that contains comboboxes for selecting filters within the
+    #current displayed inventory table. Filters will cause the table
+    #to display updated values based on the chosen filter.
     def __init__(self, master, sqlite_table, gui_table):
         self.master = master
         self.sqlite_table = sqlite_table
@@ -2023,7 +2192,8 @@ class Cogs_View(Toplevel):
 
 
 class Emptr_View(Toplevel):
-
+    #Toplevel used to input transaction information when inventory items
+    #are taken from, or returned to Montgomery.
     def __init__(self, master, sqlite_table, gui_table):
         self.master = master
         self.sqlite_table = sqlite_table
@@ -2081,7 +2251,7 @@ class Emptr_View(Toplevel):
                 Entry(self.info_fr).grid(row=index,column=1)
             self.window_height += 35
         self.info_fr.grid(row=1,column=0,columnspan=2)
-
+        # Checkbox used indicate Montgomery return
         self.check_var = IntVar()
         self.check_var.set(1)
         self.check_b = Checkbutton(
@@ -2105,6 +2275,8 @@ class Emptr_View(Toplevel):
         self.resizable(0,0)
 
     def confirm(self):
+        #Update 'employee_transactions' table with entry information.
+        #Also update 'bottles'/'samples' inventories.
         self.entries = [x.get() for x
                         in reversed(self.info_fr.grid_slaves())
                         if x.winfo_class() == "Entry"
@@ -2140,7 +2312,7 @@ class Emptr_View(Toplevel):
         self.destroy()
 
     def cbox_check(self):
-
+        #Checkbox selection function
         if self.check_var.get() == 1:
             self.dest_entry.delete(0, END)
             self.dest_entry.insert(0, "Montgomery")
@@ -2151,7 +2323,7 @@ class Emptr_View(Toplevel):
 
 
 class Option_Frame(LabelFrame):
-
+    #Frame used to place buttons with inventory functionality.
     def __init__(self, master):
         self.master = master
         self.height = height
@@ -2170,7 +2342,9 @@ class Logistics_Button(Button):
 
 
 class Treeview_Table(ttk.Treeview):
-    #Creates a gui_table
+    #Creates a gui_table with given columns.
+    #Has ability to be sorted by gui_table_sort when column headers are
+    #clicked upon.
     def __init__(self, master, columns):
         ttk.Treeview.__init__(self, master, columns=columns, show='headings',
                               height=600, style="Custom.Treeview")
