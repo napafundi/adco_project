@@ -45,7 +45,7 @@ def database():
                 """)
     cur.execute("""CREATE TABLE IF NOT EXISTS 'grain'
                 (date DATE, 'order_number' TEXT, type TEXT, amount INTEGER,
-                 price REAL,total TEXT)
+                 price REAL, total TEXT)
                 """)
     cur.execute("""CREATE TABLE IF NOT EXISTS 'grain_log'
                 (arrival_date DATE, finish_date DATE, type TEXT, order_no TEXT)
@@ -57,6 +57,15 @@ def database():
                 ('barrel_no' TEXT, type TEXT, gallons INTEGER,
                  'proof_gallons' REAL, 'date_filled' DATE, age TEXT,
                  investor TEXT)
+                """)
+    cur.execute("""CREATE TABLE IF NOT EXISTS 'empty_barrels'
+                ('barrel_no' TEXT, type TEXT, gallons INTEGER,
+                 'proof_gallons' REAL,'pg_remaining' REAL, 'date_filled' DATE,
+                 'date_emptied' DATE, age TEXT, investor TEXT)
+                """)
+    cur.execute("""CREATE TABLE IF NOT EXISTS 'barrel_count'
+                ('full_amount' INTEGER,'empty_amount' INTEGER, price REAL,
+                 total TEXT)
                 """)
     cur.execute("""CREATE TABLE IF NOT EXISTS 'estimated_cogs'
                 (raw_mat REAL, energy REAL, labor REAL, error REAL,
@@ -119,6 +128,16 @@ def db_update():
                                       - julianday(date_filled)) / 365),
                                      (((julianday('now')
                                       - julianday(date_filled)) % 365) / 30))
+                """)
+    cur.execute("""SELECT COUNT(*)
+                     FROM 'barrels'
+                """)
+    barrel_count = str(cur.fetchone()[0])
+    cur.execute("UPDATE 'barrel_count' " +
+                   "SET full_amount=" + barrel_count)
+    cur.execute("""UPDATE 'barrel_count'
+                      SET total=printf('%s%.2f', '$',
+                                       (full_amount + empty_amount) * price)
                 """)
     cur.execute("""UPDATE 'estimated_cogs'
                       SET total_per_bottle=PRINTF('%.2f',
@@ -188,7 +207,7 @@ def monthly_reports_update():
 def create_excel_inv():
     #Populate inventory_template.xlsx with inventory values and save as
     #new workbook.
-    #'inv table': 'total column index'
+    #'inv table', 'total column index'
     inventories = (('raw_materials', 4),
                    ('bottles', 5),
                    ('samples', 5),
@@ -234,6 +253,7 @@ def create_excel_inv():
 
 def edit_db(sql_edit, sqlite_table, gui_table, view_fr, delete=False):
     #Updates the sqlite_table with the changes provided by sql_edit.
+    #sql_edit is a tuple of length 2*(num of cols)
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
     cur.execute("SELECT * " +
@@ -257,7 +277,14 @@ def edit_db(sql_edit, sqlite_table, gui_table, view_fr, delete=False):
         view_fr.columns.set("All")
         view_fr.columns.event_generate("<<ComboboxSelected>>")
     except:
+        pass
+    try:
         view_products(sqlite_table, 'All', 'All', gui_table)
+    except:
+        pass
+    db_update()
+    if sqlite_table == 'barrels':
+        barr_count_fr.barr_update(first=1)
 
 
 def view_widget(window, widget, location, sqlite_table, column, item,
@@ -352,7 +379,8 @@ def file_view(folder):
     labels_window.resizable(0,0)
 
 
-def selection_check(sqlite_table, gui_table, view_fr, edit=True, delete=False):
+def selection_check(sqlite_table, gui_table, view_fr, edit=True, delete=False,
+                    empty=False):
     #Checks to see if a gui_table selection has been made and returns
     #the respective action based on the gui_table.
     item_values = gui_table.item(gui_table.selection())['values']
@@ -368,7 +396,9 @@ def selection_check(sqlite_table, gui_table, view_fr, edit=True, delete=False):
                         delete=True)
             else:
                 return
-        elif (gui_table == po_tbl and edit==False):
+        elif empty == True:
+            Empty_Barrel_View(window, item_values)
+        elif (gui_table == po_tbl and edit==False): # Open po excel file
             po_num = item_values[8]
             try:
                 excel_file = (os.getcwd() + "/purchase_orders/" + po_num[:4]
@@ -378,11 +408,11 @@ def selection_check(sqlite_table, gui_table, view_fr, edit=True, delete=False):
                 messagebox.showerror(
                     "Program Error",
                     "There was an error opening Excel.", parent=window)
-        elif gui_table == inprog_tbl:
+        elif gui_table == inprog_tbl:   #Finish in progress production
             Finish_View(window, item_values)
-        elif (gui_table == pending_tbl and edit==False):
+        elif (gui_table == pending_tbl and edit==False):  #fulfill po
             fulfill_pending(gui_table, view_fr)
-        else:
+        else:   #edit selection
             Edit_View(window, sqlite_table, gui_table, 2, view_fr)
     else:
         messagebox.showerror(
@@ -426,9 +456,9 @@ def cal_button(tplvl, date_entry):
     tplvl.cal = Calendar(tplvl.top, font="Arial 14", selectmode='day',
                          locale='en_US', cursor="hand2")
     tplvl.cal.pack(fill="both", expand=True)
-    (Button(tplvl.top, text="ok",
-            command=lambda: retrieve_date(tplvl,date_entry))
-            .pack())
+    (HoverButton(tplvl.top, text="ok",
+                 command=lambda: retrieve_date(tplvl, date_entry))
+                 .pack())
     tplvl.top.focus()
 
 
@@ -543,6 +573,20 @@ def fulfill_pending(gui_table, view_fr):
     for po in po_vals:
         edit_db(po, 'pending_po', gui_table, view_fr, delete=True)
 
+class HoverButton(Button):
+    #Button widget with mouse-over color and cursor changes.
+    def __init__(self, master, **kw):
+        Button.__init__(self, master=master, cursor="hand2", **kw)
+        self.defaultBackground = self["background"]
+        self.bind("<Enter>", self.on_enter)
+        self.bind("<Leave>", self.on_leave)
+
+    def on_enter(self, event):
+        self['background'] = 'gray70'
+
+    def on_leave(self, event):
+        self['background'] = self.defaultBackground
+
 
 class Add_View(Toplevel):
     #A toplevel widget with labels corresponding to sqlite table columns
@@ -585,8 +629,8 @@ class Add_View(Toplevel):
                     self.date_entry = self.grid_slaves(row=self.date_index,
                                                        column=self.entry_col)[0]
                     self.date_entry.config(state="readonly")
-                    self.cal_link = Button(
-                        self,image=cal_photo,
+                    self.cal_link = HoverButton(
+                        self, image=cal_photo,
                         command=lambda: cal_button(self, self.date_entry))
                     self.cal_link.image = cal_photo
                     self.cal_link.grid(row=index, column=self.entry_col+1)
@@ -618,10 +662,10 @@ class Add_View(Toplevel):
 
         self.grid_size = self.grid_size()[1]
         self.button_frame = Frame(self)
-        (Button(self.button_frame, text="Add Item", width=10,
-                command=lambda: self.add_item(self.sqlite_table))
+        (HoverButton(self.button_frame, text="Add Item", width=10,
+                command=self.add_item)
                 .pack(side=LEFT, padx=5, pady=5))
-        (Button(self.button_frame, text="Cancel", width=10,
+        (HoverButton(self.button_frame, text="Cancel", width=10,
                 command=lambda : self.destroy())
                 .pack(side=LEFT, padx=5, pady=5))
         self.button_frame.grid(row=self.grid_size+1, column=0, columnspan=2)
@@ -631,7 +675,7 @@ class Add_View(Toplevel):
         self.geometry("+%d+%d" % (self.x, self.y))
         self.resizable(0,0)
 
-    def add_item(self,sqlite_table):
+    def add_item(self):
         #Work through Add_View toplevel to find entry widgets and
         #extract these values to be inserted into the sqlite table.
         #Uses db_update() to update certain column values afterwards
@@ -673,6 +717,8 @@ class Add_View(Toplevel):
             self.view_fr.columns.event_generate("<<ComboboxSelected>>")
         except:
             view_products(self.sqlite_table, 'All', 'All', self.gui_table)
+        if self.sqlite_table == 'barrels':
+            barr_count_fr.barr_update(first=1)
         self.destroy()
 
     def total_after(self):
@@ -743,11 +789,11 @@ class Edit_View(Add_View):
         self.button_frame.destroy()
 
         self.button_frame = Frame(self)
-        (Button(self.button_frame, text="Confirm", command=self.confirm)
-                .pack(side=LEFT, padx=5, pady=5))
-        (Button(self.button_frame, text="Cancel",
-                command=lambda: self.destroy())
-                .pack(side=LEFT, padx=5, pady=5))
+        (HoverButton(self.button_frame, text="Confirm", command=self.confirm)
+                     .pack(side=LEFT, padx=5, pady=5))
+        (HoverButton(self.button_frame, text="Cancel",
+                     command=lambda: self.destroy())
+                     .pack(side=LEFT, padx=5, pady=5))
         self.button_frame.grid(row=self.grid_size+1, column=0, columnspan=3)
 
 
@@ -872,12 +918,12 @@ class Production_View(Toplevel):
         self.samples_frame.grid(row=self.grid_size+2, column=0, columnspan=3)
 
         self.button_frame = Frame(self)
-        (Button(self.button_frame, text="Confirm", width=10,
-                command=self.confirm)
-                .pack(side=LEFT, padx=5, pady=5))
-        (Button(self.button_frame, text="Cancel", width=10,
-                command=lambda: self.destroy())
-                .pack(side=LEFT, padx=5, pady=5))
+        (HoverButton(self.button_frame, text="Confirm", width=10,
+                     command=self.confirm)
+                     .pack(side=LEFT, padx=5, pady=5))
+        (HoverButton(self.button_frame, text="Cancel", width=10,
+                     command=lambda: self.destroy())
+                     .pack(side=LEFT, padx=5, pady=5))
         self.button_frame.grid(row=self.grid_size+3, column=0, columnspan=3)
 
         self.conn.close()
@@ -1025,10 +1071,11 @@ class Production_View(Toplevel):
             self.desc_text = Text(self.desc_tl, height=2, width=30)
             self.desc_text.grid(row=1, column=0, columnspan=2)
             self.desc_fr = Frame(self.desc_tl)
-            self.conf_b = Button(self.desc_fr, text="Confirm", command=desc_set)
+            self.conf_b = HoverButton(self.desc_fr, text="Confirm",
+                                      command=desc_set)
             self.conf_b.grid(row=0, column=0)
-            (Button(self.desc_fr, text="Cancel", command=desc_cancel)
-             .grid(row=0, column=1))
+            (HoverButton(self.desc_fr, text="Cancel", command=desc_cancel)
+                         .grid(row=0, column=1))
             self.desc_fr.grid(row=2, column=0, columnspan=2)
             #Prevent use of 'x-out' button.
             self.desc_tl.protocol("WM_DELETE_WINDOW", disable_event)
@@ -1058,10 +1105,10 @@ class Purchase_Order_View(Toplevel):
 
         self.title_fr = Frame(self)
         Label(self.title_fr, text="Purchase Order", font="Arial 10 bold").pack()
-        self.title_fr.grid(row=0, column=0, columnspan=2, pady=5)
+        self.title_fr.grid(row=0, column=0, columnspan=2)
 
         #Frame containing purchase order shipment information.
-        self.info_fr = Frame(self, pady=5)
+        self.info_fr = Frame(self, pady=2)
         Label(self.info_fr, text="From:").grid(row=0, column=0, sticky=W)
         Label(self.info_fr, text="PO Number:").grid(row=1, column=0, sticky=W)
         Label(self.info_fr, text="To:").grid(row=2, column=0, sticky=W)
@@ -1097,14 +1144,16 @@ class Purchase_Order_View(Toplevel):
         Entry(self.info_fr, justify='center').grid(row=2, column=1)
         self.po_date = Entry(self.info_fr, justify='center', state='readonly')
         self.po_date.grid(row=0, column=3)
-        self.po_cal_link = Button(self.info_fr, image=cal_photo,
-                                  command=lambda: cal_button(self,self.po_date))
+        self.po_cal_link = HoverButton(self.info_fr, image=cal_photo,
+                                       command=lambda:
+                                       cal_button(self, self.po_date))
         self.po_cal_link.image = cal_photo
         self.po_cal_link.grid(row=0,column=4)
         self.pu_date = Entry(self.info_fr, justify='center', state='readonly')
         self.pu_date.grid(row=1, column=3)
-        self.pu_cal_link = Button(self.info_fr, image=cal_photo,
-                                  command=lambda: cal_button(self,self.pu_date))
+        self.pu_cal_link = HoverButton(self.info_fr, image=cal_photo,
+                                       command=lambda:
+                                       cal_button(self, self.pu_date))
         self.pu_cal_link.image = cal_photo
         self.pu_cal_link.grid(row=1,column=4)
         self.info_fr.grid(row=1, column=0, columnspan=2)
@@ -1136,7 +1185,7 @@ class Purchase_Order_View(Toplevel):
                 validatecommand=(self.register(valid_dec),'%S','%s','%d'))
                 .grid(row=i, column=3, sticky=N+E+S+W))
             (Entry(
-                self.order_fr,width=12,justify="center",bg="light gray")
+                self.order_fr, width=12, justify="center", bg="light gray")
                 .grid(row=i,column=4,sticky=N+E+S+W))
         (Label(
             self.order_fr, text="TOTAL", background="dark slate gray",
@@ -1150,7 +1199,7 @@ class Purchase_Order_View(Toplevel):
         for label in self.order_fr.grid_slaves(row=0):
             label.config(background="dark slate gray", relief="raised",
                          fg="white")
-        self.order_fr.grid(row=2, column=0, columnspan=2, pady=5)
+        self.order_fr.grid(row=2, column=0, columnspan=2, pady=2)
 
         self.check_var = IntVar()
         self.check_var.set(1)
@@ -1159,15 +1208,14 @@ class Purchase_Order_View(Toplevel):
         self.check_b.grid(row=3, column=0, columnspan=2)
 
         self.btn_fr = Frame(self)
-        (Button(self.btn_fr, text="Confirm", command=self.confirm)
-                .grid(row=0, column=0, padx=10))
-        (Button(self.btn_fr, text="Cancel", command=lambda: self.destroy())
-                .grid(row=0, column=1, padx=10))
-        self.btn_fr.grid(row=4, column=0, columnspan=2, pady=5)
+        (HoverButton(self.btn_fr, text="Confirm", command=self.confirm)
+                     .grid(row=0, column=0, padx=10))
+        (HoverButton(self.btn_fr, text="Cancel", command=lambda: self.destroy())
+                     .grid(row=0, column=1, padx=10))
+        self.btn_fr.grid(row=4, column=0, columnspan=2, pady=2)
 
         self.total_after()
-        self.geometry("%dx%d+%d+%d" % (464, 650, self.x, self.y))
-        self.resizable(0,0)
+        self.geometry("%dx%d+%d+%d" % (464, 625, self.x, self.y))
         self.focus()
 
     def total_after(self):
@@ -1292,10 +1340,11 @@ class Finish_View(Toplevel):
         self.prod_fr.grid(row=1, column=0, columnspan=2)
 
         self.button_fr = Frame(self)
-        (Button(self.button_fr, text="Confirm", command=self.confirm)
-                .pack(side=LEFT))
-        (Button(self.button_fr, text="Cancel", command=lambda: self.destroy())
-                .pack(side=LEFT))
+        (HoverButton(self.button_fr, text="Confirm", command=self.confirm)
+                     .pack(side=LEFT))
+        (HoverButton(self.button_fr, text="Cancel",
+                     command=lambda: self.destroy())
+                     .pack(side=LEFT))
         self.button_fr.grid(row=2, column=0, columnspan=2)
 
         self.title("Finish " + self.product + " Production")
@@ -1416,8 +1465,9 @@ class Mash_Production_View(Toplevel):
         self.date_entry = Entry(self.type_fr, state="readonly",
                                 justify="center", textvariable=self.date)
         self.date_entry.grid(row=2,column=1)
-        self.cal_link = Button(self.type_fr, image=cal_photo,
-                               command=lambda: cal_button(self,self.date_entry))
+        self.cal_link = HoverButton(self.type_fr, image=cal_photo,
+                                    command=lambda:
+                                    cal_button(self, self.date_entry))
         self.cal_link.image = cal_photo
         self.cal_link.grid(row=2, column=2)
         self.type_fr.grid(row=1, column=0, columnspan=3)
@@ -1426,10 +1476,11 @@ class Mash_Production_View(Toplevel):
         self.grain_fr.grid_propagate(0) #Frame size doesn't change
 
         self.button_fr = Frame(self, padx=10)
-        (Button(self.button_fr, text="Confirm", command=self.confirm)
-                .grid(row=0, column=0))
-        (Button(self.button_fr, text="Cancel", command=lambda: self.destroy())
-                .grid(row=0, column=1))
+        (HoverButton(self.button_fr, text="Confirm", command=self.confirm)
+                     .grid(row=0, column=0))
+        (HoverButton(self.button_fr, text="Cancel",
+                     command=lambda: self.destroy())
+                     .grid(row=0, column=1))
         self.button_fr.grid(row=3, column=0, columnspan=3)
 
         self.title("Mash Production")
@@ -1678,12 +1729,12 @@ class Mash_Production_View(Toplevel):
                                       justify='center', state='readonly')
             self.new_ord_box.set(self.combox_values[0])
             self.new_ord_box.grid(row=1, column=0, columnspan=2, pady=5)
-            (Button(self.recur_tplvl, text="Confirm",
-                    command=lambda: self.recur_confirm(type))
-                    .grid(row=2, column=0, pady=5))
-            (Button(self.recur_tplvl, text="Cancel",
-                    command=lambda: self.recur_cancel())
-                    .grid(row=2, column=1, pady=5))
+            (HoverButton(self.recur_tplvl, text="Confirm",
+                         command=lambda: self.recur_confirm(type))
+                         .grid(row=2, column=0, pady=5))
+            (HoverButton(self.recur_tplvl, text="Cancel",
+                         command=lambda: self.recur_cancel())
+                         .grid(row=2, column=1, pady=5))
 
             self.recur_tplvl.protocol("WM_DELETE_WINDOW", disable_event)
             self.recur_tplvl.title("Production Description")
@@ -1892,7 +1943,7 @@ class View_Frame(LabelFrame):
         self.columns.config(width=18, background="white", justify='center',
                             state='readonly')
         self.columns.bind("<<ComboboxSelected>>", self.col_upd)
-        self.columns.grid(row=1, column=0, pady=5, padx=5)
+        self.columns.grid(row=1, column=0, pady=3, padx=5)
 
         #Item selector.
         Label(self, text="Values").grid(row=2, column=0)
@@ -1901,7 +1952,7 @@ class View_Frame(LabelFrame):
         self.rows.config(width=18, background="white", justify='center',
                          state='readonly')
         self.rows.bind("<<ComboboxSelected>>", self.row_upd)
-        self.rows.grid(row=3, column=0, pady=5, padx=5)
+        self.rows.grid(row=3, column=0, pady=3, padx=5)
 
         #Total value label.
         if any(s in self.gui_table.columns for s in ('Price', 'Proof Gallons')):
@@ -2049,6 +2100,82 @@ class View_Frame(LabelFrame):
         except:
             self.text_var.set("$0.00")
 
+class Barrel_Count_Frame(LabelFrame):
+    #Frame containing the number of empty barrels, their price and the
+    #total price. Also contains buttons to update these values.
+    def __init__(self, master):
+        self.master = master
+        LabelFrame.__init__(self, master=self.master, text="Barrel Valuation",
+                             relief=RIDGE, font="bold", bd=5, padx=2, pady=2)
+
+        (Label(self, text="Full Barrels", bg="dark slate gray", fg="white")
+               .grid(row=0, column=0, sticky="NESW"))
+        Entry(self, justify='center').grid(row=1, column=0)
+        (Label(self, text="Empty Barrels", bg="dark slate gray", fg="white")
+               .grid(row=0, column=1, sticky="NESW"))
+        Entry(self, justify='center').grid(row=1, column=1)
+        (Label(self, text="Price", bg="dark slate gray", fg="white")
+               .grid(row=2, column=0, sticky="NESW"))
+        Entry(self, justify='center').grid(row=3, column=0)
+        (Label(self, text="Total", bg="dark slate gray", fg="white")
+               .grid(row=2, column=1, sticky="NESW"))
+        Entry(self, justify='center').grid(row=3, column=1)
+
+        # Checkbox used to lock/unlock entries
+        self.lock_var = IntVar()
+        self.lock_var.set(1)
+        self.lock_cbox = Checkbutton(self, text="Lock/Unlock",
+                                     variable=self.lock_var,
+                                     command=self.cbox_check)
+        self.lock_cbox.grid(row=4, column=0)
+
+        (HoverButton(self, text="Update", font='Arial 9 bold',
+                     command=self.barr_update)
+                     .grid(row=4, column=1, sticky="NESW"))
+        self.barr_update(first=1)
+        self.pack(anchor='center')
+
+    def cbox_check(self):
+        #Checkbox selection function to lock/unlock entries
+        if self.lock_var.get() == 1:
+            for entry in self.entries[1:3]: #empty barrels / price entry
+                entry.config(state='readonly')
+        else:
+            for entry in self.entries[1:3]: #empty barrels / price entry
+                entry.config(state='normal')
+
+    def barr_update(self, first=0):
+        self.conn = sqlite3.Connection("inventory.db")
+        self.cur = self.conn.cursor()
+        self.cur.execute("""SELECT *
+                              FROM 'barrel_count'
+                         """)
+        self.barr_count_vals = list(self.cur.fetchone())
+        self.conn.close()
+        self.entries = [x for x
+                        in reversed(self.grid_slaves())
+                        if x.winfo_class() == 'Entry']
+        if first == 1:  #First time running function
+            self.barr_upd_vals = self.barr_count_vals
+        else:
+            self.entries_vals = [x.get() for x in self.entries]
+            self.sql_edit = self.entries_vals + self.barr_count_vals
+            self.sql_edit = tuple(self.sql_edit)
+            edit_db(self.sql_edit, 'barrel_count', None, None)
+            self.conn = sqlite3.Connection("inventory.db")
+            self.cur = self.conn.cursor()
+            self.cur.execute("""SELECT *
+                                  FROM 'barrel_count'
+                             """)
+            self.barr_upd_vals = self.cur.fetchone()
+            self.conn.close()
+        for (entry, val) in zip(self.entries, self.barr_upd_vals):
+            entry.config(state='normal')
+            entry.delete(0, END)
+            entry.insert(0, val)
+            entry.config(state='readonly')
+            self.lock_var.set(1)
+
 
 class Cogs_View(Toplevel):
     #Toplevel to view and edit estimated_cogs table.
@@ -2097,10 +2224,11 @@ class Cogs_View(Toplevel):
         self.rum_fr.grid(row=0, column=1, padx=5)
 
         self.button_fr = Frame(self, pady=5)
-        (Button(self.button_fr, text="Update", command=self.update)
-                .grid(row=0, column=0, padx=5))
-        (Button(self.button_fr, text="Cancel", command=lambda: self.destroy())
-                .grid(row=0, column=1, padx=5))
+        (HoverButton(self.button_fr, text="Update", command=self.update)
+                     .grid(row=0, column=0, padx=5))
+        (HoverButton(self.button_fr, text="Cancel",
+                     command=lambda: self.destroy())
+                     .grid(row=0, column=1, padx=5))
         self.button_fr.grid(row=1, column=0, columnspan=2)
 
         self.total_after()
@@ -2216,12 +2344,12 @@ class Emptr_View(Toplevel):
                 self.date_entry = Entry(self.info_fr, state='readonly',
                                         justify='center',
                                         textvariable=self.date)
-                self.date_entry.grid(row=index,column=1)
-                self.cal_link = Button(self.info_fr, image=cal_photo,
-                                       command=lambda:
-                                       cal_button(self,self.date_entry))
+                self.date_entry.grid(row=index, column=1)
+                self.cal_link = HoverButton(self.info_fr, image=cal_photo,
+                                            command=lambda:
+                                            cal_button(self, self.date_entry))
                 self.cal_link.image = cal_photo
-                self.cal_link.grid(row=index,column=2)
+                self.cal_link.grid(row=index, column=2)
             elif desc == "Product":
                 self.conn = sqlite3.Connection("inventory.db")
                 self.conn.row_factory = lambda cursor, row: row[0]
@@ -2261,12 +2389,12 @@ class Emptr_View(Toplevel):
         self.cbox_check()
 
         self.button_fr = Frame(self)
-        (Button(self.button_fr, text="Confirm", width=10,
-                command=lambda: self.confirm())
-                .pack(side=LEFT, padx=5, pady=5))
-        (Button(self.button_fr, text="Cancel", width=10,
-                command=lambda: self.destroy())
-                .pack(side=LEFT, padx=5, pady=5))
+        (HoverButton(self.button_fr, text="Confirm", width=10,
+                     command=lambda: self.confirm())
+                     .pack(side=LEFT, padx=5, pady=5))
+        (HoverButton(self.button_fr, text="Cancel", width=10,
+                     command=lambda: self.destroy())
+                     .pack(side=LEFT, padx=5, pady=5))
         self.button_fr.grid(row=3, column=0, columnspan=2)
 
         self.title("Employee Transasction")
@@ -2322,6 +2450,97 @@ class Emptr_View(Toplevel):
             self.dest_entry.delete(0, END)
 
 
+class Empty_Barrel_View(Toplevel):
+    #Toplevel used to input date for when selected barrel was emptied.
+    #Removes barrel from 'barrels' and places in 'empty_barrels'.
+    def __init__(self, master, barrel_info):
+        self.master = master
+        self.barrel_info = barrel_info
+        self.x = (screen_width/2) - (width/2) + 100
+        self.y = ((screen_height/2) - (height/2)) + 50
+        Toplevel.__init__(self, master=self.master)
+
+        self.main_fr = LabelFrame(self,
+                                  text="Empty Barrel: " + self.barrel_info[0],
+                                  font="Arial 10 bold")
+        Label(self.main_fr, text="Empty Date:").grid(row=0, column=0)
+        self.date_entry = Entry(self.main_fr, justify='center',
+                                state='readonly')
+        self.date_entry.grid(row=0, column=1)
+        self.cal_link = HoverButton(self.main_fr, image=cal_photo,
+                                    command=lambda:
+                                    cal_button(self, self.date_entry))
+        self.cal_link.image = cal_photo
+        self.cal_link.grid(row=0,column=3)
+        Label(self.main_fr, text="Remaining PG:").grid(row=1, column=0)
+        (Entry(self.main_fr, validate='key',
+              validatecommand=(self.register(valid_dec), '%S', '%s', '%d'))
+              .grid(row=1, column=1))
+        self.add_empty = IntVar()
+        self.add_empty.set(1)
+        self.add_empty_b = Checkbutton(self.main_fr,
+                                       text="Add empty barrel to inventory?",
+                                       variable=self.add_empty)
+        self.add_empty_b.grid(row=2, column=0, columnspan=2)
+        self.main_fr.grid(row=0, column=0, pady=5, padx=10, ipadx=2, ipady=2)
+
+        self.button_fr = Frame(self)
+        (HoverButton(self.button_fr, text="Confirm", command=self.confirm)
+                     .pack(side=LEFT, padx=5))
+        HoverButton(self.button_fr, text="Cancel").pack(side=LEFT, padx=5)
+        self.button_fr.grid(row=1, column=0, pady=5)
+
+        self.title("Empty Barrel: " + self.barrel_info[0])
+        self.focus()
+        self.geometry("+%d+%d" % (self.x, self.y))
+        self.resizable(0,0)
+
+    def confirm(self):
+        self.conf_quest = messagebox.askquestion(
+            "Empty Barrel " + self.barrel_info[0] + "?",
+            "Are you sure you want to confirm? Make sure everything is entered "
+            + "correctly before continuing.", parent=self)
+        if self.conf_quest == "yes":
+            self.entry_vals = [x.get() for x
+                               in reversed(self.main_fr.grid_slaves())
+                               if x.winfo_class() == 'Entry']
+            if all(self.entry_vals):
+                self.conn = sqlite3.Connection("inventory.db")
+                self.cur = self.conn.cursor()
+                self.cur.execute("""DELETE FROM barrels
+                                          WHERE barrel_no=?""",
+                                          (self.barrel_info[0],))
+                self.ins_values = (self.barrel_info[:4] +
+                                   [self.entry_vals[1]] +
+                                   [self.barrel_info[4]] +
+                                   [self.entry_vals[0]] +
+                                   self.barrel_info[5:])
+                self.ins_values = tuple(self.ins_values)
+                self.cur.execute("""INSERT INTO empty_barrels
+                                         VALUES (?,?,?,?,?,?,?,?,?)""",
+                                         (self.ins_values))
+                if self.add_empty.get() == 1:
+                    self.cur.execute("""UPDATE barrel_count
+                                           SET empty_amount=(empty_amount + 1)
+                                     """)
+                self.conn.commit()
+                self.conn.close()
+            else:
+                messagebox.showerror(
+                    "Input Error",
+                    "Please make sure all of the entries have values.",
+                    parent=self)
+        else:
+            return
+        self.destroy()
+        db_update()
+        try:
+            barr_vfr.columns.set("All")
+            barr_vfr.columns.event_generate("<<ComboboxSelected>>")
+        except:
+            pass
+        barr_count_fr.barr_update(first=1)
+
 class Option_Frame(LabelFrame):
     #Frame used to place buttons with inventory functionality.
     def __init__(self, master):
@@ -2331,12 +2550,12 @@ class Option_Frame(LabelFrame):
                             height=self.height, relief=RIDGE, font="bold", bd=5)
 
 
-class Logistics_Button(Button):
+class Logistics_Button(HoverButton):
     #Command frame button
-    def __init__(self, master, text, sqlite_table, gui_table,command):
+    def __init__(self, master, text, sqlite_table, gui_table, command):
         self.sqlite_table = sqlite_table
         self.gui_table = gui_table
-        Button.__init__(self, master=master, text=text, width=20, height=1,
+        HoverButton.__init__(self, master=master, text=text, width=20, height=1,
                         font=('Calibri', 12, 'bold'), command=command)
         self.pack(anchor='center')
 
@@ -2355,8 +2574,9 @@ class Treeview_Table(ttk.Treeview):
             self.heading(str('#' + str((i+1))),
                          text=self.columns[i],
                          command=lambda col=self.columns[i]:
-                                 gui_table_sort(self, col, False))
+                         gui_table_sort(self, col, False))
         self.pack(side=RIGHT, fill=BOTH, expand=1)
+
 
 #Used to search for the string literal within a filename that occurs
 #before the file extension (Ex. '.txt').
@@ -2651,10 +2871,17 @@ grain_log_cfr.pack(padx=10)
 
 barr_nb = ttk.Notebook(window, height=height, width=width)
 barr_fr = ttk.Frame(barr_nb)
+empt_barr_fr = ttk.Frame(barr_nb)
+
 barr_nb.add(barr_fr, text="Barrel Inventory", padding=10)
 barr_fr.bind('<Visibility>',
               lambda event:
               barr_vfr.columns.event_generate("<<ComboboxSelected>>"))
+
+barr_nb.add(empt_barr_fr, text="Emptied Barrels", padding=10)
+empt_barr_fr.bind('<Visibility>',
+                  lambda event:
+                  view_products('empty_barrels', 'All', 'All', empt_barr_tbl))
 
 barr_tbl = Treeview_Table(barr_fr, ("Barrel No","Type","Gallons",
                                     "Proof Gallons", "Date Filled", "Age",
@@ -2665,6 +2892,9 @@ barr_optfr = Option_Frame(barr_cfr)
 Logistics_Button(barr_optfr, "Add Barrel", 'barrels', barr_tbl,
                  lambda:
                  Add_View(window, 'barrels', barr_tbl, 1, barr_vfr))
+Logistics_Button(barr_optfr, "Empty Barrel", 'barrels', barr_tbl,
+                 lambda:
+                 selection_check('barrels', barr_tbl, barr_vfr, empty=True))
 Logistics_Button(barr_optfr, "Update COGS", 'barrels', barr_tbl,
                  lambda:
                  Cogs_View(window, 'estimated_cogs', barr_tbl, barr_vfr))
@@ -2674,8 +2904,28 @@ Logistics_Button(barr_optfr, "Edit Selection", 'barrels', barr_tbl,
 Logistics_Button(barr_optfr, "Delete Selection", 'barrels', barr_tbl,
                  lambda:
                  selection_check('barrels', barr_tbl, barr_vfr, delete=True))
-barr_optfr.pack()
+barr_optfr.pack(pady=2)
+barr_count_fr = Barrel_Count_Frame(barr_cfr)
 barr_cfr.pack(padx=10)
+
+empt_barr_tbl = Treeview_Table(empt_barr_fr, ('Barrel No', 'Type', 'Gallons',
+                                              'Proof Gallons', 'PG Remaining',
+                                              'Date Filled', 'Date Emptied',
+                                              'Age', 'Investor'))
+
+empt_barr_cfr = Command_Frame(empt_barr_fr)
+empt_barr_optfr = Option_Frame(empt_barr_cfr)
+Logistics_Button(empt_barr_optfr, "Edit Selection", 'empty_barrels',
+                 empt_barr_tbl,
+                 lambda:
+                 selection_check('empty_barrels', empt_barr_tbl, None))
+Logistics_Button(empt_barr_optfr, "Delete Selection", 'empty_barrels',
+                 empt_barr_tbl,
+                 lambda:
+                 selection_check('empty_barrels', empt_barr_tbl, None,
+                                 delete=True))
+empt_barr_optfr.pack(pady=2)
+empt_barr_cfr.pack(padx=10)
 
 po_nb = ttk.Notebook(window, height=height, width=width)
 po_fr = Frame(po_nb)
