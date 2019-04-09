@@ -155,25 +155,31 @@ def db_update():
 def monthly_reports_update():
     #Update 'monthly_reports' table with current month and inventory
     #values. Only select purchase orders from current month.
-    totals_tables = ['raw_materials', 'bottles', 'samples', 'grain',
-                     'purchase_orders']
-    monthly_totals = {}
+    inv_tables = ['raw_materials', 'bottles', 'samples', 'pending_po', 'grain',
+                  'purchase_orders']
+    monthly_totals = collections.OrderedDict()
     cur_date = datetime.today().strftime('%Y-%m')
     conn = sqlite3.Connection("inventory.db")
     conn.row_factory = lambda cursor, row: row[0]
     cur = conn.cursor()
-    for table in totals_tables:
-        if table == 'purchase_orders':
-            cur.execute("SELECT total " +
+    for table in inv_tables:
+        if table == 'pending_po':
+            cur.execute("SELECT product, amount, total " +
+                          "FROM " + table +
+                        " WHERE po_date " +
+                          "LIKE \'" + cur_date + "%\'")
+            pending_info = cur.fetchall()
+        elif table == 'purchase_orders':
+            cur.execute("SELECT product, amount, total " +
                           "FROM " + table +
                         " WHERE pu_date " +
                           "LIKE \'" + cur_date + "%\'")
         else:
             cur.execute("SELECT total " +
                           "FROM " + table)
-        total = sum([float(x[1:].replace(",","")) for x
-                     in cur.fetchall()])
-        monthly_totals[table] = total
+            total = sum([float(x[1:].replace(",", "")) for x
+                         in cur.fetchall()])
+            monthly_totals[table] = total
     conn.close()
     conn = sqlite3.Connection("inventory.db")
     cur = conn.cursor()
@@ -195,10 +201,15 @@ def monthly_reports_update():
             whisk_total += float(barrel[3]) * whisk_cogs
     monthly_totals['barreled_rum'] = ("%.2f" % rum_total)
     monthly_totals['barreled_whiskey'] = ("%.2f" % whisk_total)
+    cur.execute("""SELECT total
+                     FROM barrel_count
+                """)
+    barr_total = cur.fetchone()[0][1:].replace(",", "")
+    monthly_totals['barrels'] = barr_total
     for key, value in monthly_totals.items():
         value = ("%.2f" % float(value))
         cur.execute("INSERT INTO monthly_reports " +
-                         "VALUES (?,?,?)",
+                         "VALUES (?, ?, ?)",
                          (cur_date, key, value))
     conn.commit()
     conn.close()
@@ -207,7 +218,7 @@ def monthly_reports_update():
 def create_excel_inv():
     #Populate inventory_template.xlsx with inventory values and save as
     #new workbook.
-    #'inv table', 'total column index'
+    #['inv table', 'total column index']
     inventories = (('raw_materials', 4),
                    ('bottles', 5),
                    ('samples', 5),
@@ -948,18 +959,18 @@ class Production_View(Toplevel):
         self.samples_var = self.samples_entry.get()
         #Raw material options.
         self.materials = [x.get() for x
-                            in reversed(self.grid_slaves())
-                            if (x.winfo_class() == 'TCombobox')]
+                          in reversed(self.grid_slaves())
+                          if (x.winfo_class() == 'TCombobox')]
         #Raw material entries.
         self.entries = [x.get() for x
-                            in reversed(self.grid_slaves())
-                            if (x.winfo_class() == 'Entry')]
+                        in reversed(self.grid_slaves())
+                        if (x.winfo_class() == 'Entry')]
         #Raw material product types.
         self.types = [x.cget("text").rstrip(":") for x
-                        in reversed(self.grid_slaves())
-                        if (x.winfo_class() == 'Label'
-                        and x.cget("text").find(":") != -1)]
-        for entry,material in zip(self.entries,self.materials):
+                      in reversed(self.grid_slaves())
+                      if (x.winfo_class() == 'Label'
+                      and x.cget("text").find(":") != -1)]
+        for entry,material in zip(self.entries, self.materials):
             #Check material inputs to ensure non-empty values.
             if (not entry and material != "None"):
                 messagebox.showerror(
@@ -1799,12 +1810,15 @@ class Reports_Frame(Frame):
                                    font="Arial 12 bold", fg="dark slate gray")
         self.barrel_fr = LabelFrame(self, text="Barrel Values",
                                     font="Arial 12 bold", fg="dark slate gray")
+        self.po_fr = LabelFrame(self, text="Purchase Orders",
+                                font="Arial 12 bold", fg="dark slate gray")
 
         self.year_cmbo_box.event_generate("<<ComboboxSelected>>")
 
     def year_upd(self, event):
         #Generate combobox selection event for months, which will make
         #changes to values displayed.
+        monthly_reports_update()
         self.year_sel = self.year_cmbo_box.get()
         self.month_cmbo_box.event_generate("<<ComboboxSelected>>")
 
@@ -1824,13 +1838,22 @@ class Reports_Frame(Frame):
                           "WHERE date=?",
                           (self.date_sel,))
         self.monthly_totals = self.cur.fetchall()
-        self.total_vals = [x for x in self.monthly_totals if
-                           x[0] not in ['barreled_rum', 'barreled_whiskey']]
-        self.barrel_vals = [x for x in self.monthly_totals if
-                            x[0] in ['barreled_rum', 'barreled_whiskey']]
+        self.total_vals = [x for x
+                           in self.monthly_totals
+                           if x[0] in ['raw_materials', 'bottles', 'samples',
+                                       'pending_po', 'grain']]
+        self.barrel_vals = [x for x
+                            in self.monthly_totals
+                            if x[0] in ['barreled_rum',
+                                        'barreled_whiskey',
+                                        'barrels']]
+        self.po_vals = [x for x
+                        in self.monthly_totals
+                        if x[0] in ['purchase_orders']]
         self.conn.close()
-        for widg in [*self.invent_fr.grid_slaves(),
-                     *self.barrel_fr.grid_slaves()]:
+        for widg in [*self.invent_fr.grid_slaves(), # * unpacks contents
+                     *self.barrel_fr.grid_slaves(), # of iterables
+                     *self.po_fr.grid_slaves()]:
             widg.grid_forget()
         if self.monthly_totals:
             self.invent_sum = 0
@@ -1867,12 +1890,31 @@ class Reports_Frame(Frame):
                        font="Arial 10 bold", borderwidth=1, relief="solid", width=9)
                        .grid(row=index, column=1, ipadx=20, sticky="E"))
             (Label(self.barrel_fr, text="Total:", font="Arial 12 bold")
-                   .grid(row=2, column=0, padx=20, sticky="W"))
+                   .grid(row=3, column=0, padx=20, sticky="W"))
             (Label(self.barrel_fr, text="${0:,.2f}".format(self.barrel_sum),
                    font="Arial 12 bold", borderwidth=2, relief="solid", width=10)
-                   .grid(row=2, column=1, ipadx=20, sticky="E"))
+                   .grid(row=3, column=1, ipadx=20, sticky="E"))
             self.barrel_fr.columnconfigure(0, weight=1)
             self.barrel_fr.columnconfigure(1, weight=1)
+            #Purchase Order Values
+            self.po_sum = 0
+            for (index, tup) in enumerate(self.po_vals):
+                self.po_sum += float(tup[1])
+                self.txt1 = str(tup[0].replace("_"," ").title() + ":")
+                self.txt2 = "${0:,.2f}".format(tup[1])
+                (Label(self.po_fr, text=self.txt1, font="Arial 10 bold")
+                       .grid(row=index, column=0, padx=20, sticky="W"))
+                (Label(self.po_fr, text=self.txt2, font="Arial 10 bold",
+                       borderwidth=1, relief="solid", width=9)
+                       .grid(row=index, column=1, ipadx=20, sticky="E"))
+            (Label(self.po_fr, text="Total:", font="Arial 12 bold")
+                   .grid(row=3, column=0, padx=20, sticky="W"))
+            (Label(self.po_fr, text="${0:,.2f}".format(self.po_sum),
+                   font="Arial 12 bold", borderwidth=2, relief="solid",
+                   width=10)
+                   .grid(row=3, column=1, ipadx=20, sticky="E"))
+            self.po_fr.columnconfigure(0, weight=1)
+            self.po_fr.columnconfigure(1, weight=1)
         else:
             (Label(self.invent_fr, text="N/A", font="Arial 30 bold",
                    fg="gray")
@@ -1880,10 +1922,15 @@ class Reports_Frame(Frame):
             (Label(self.barrel_fr, text="N/A", font="Arial 30 bold",
                    fg="gray")
                    .grid(row=0, column=0, columnspan=2))
+            (Label(self.po_fr, text="N/A", font="Arial 30 bold",
+                   fg="gray")
+                   .grid(row=0, column=0, columnspan=2))
 
         self.invent_fr.grid(row=1, column=0, columnspan=2, padx=5, pady=5,
                            sticky="NESW")
         self.barrel_fr.grid(row=2, column=0, columnspan=2, padx=5, pady=5,
+                            sticky="NESW")
+        self.po_fr.grid(row=3, column=0, columnspan=2, padx=5, pady=5,
                             sticky="NESW")
 
 
@@ -2567,7 +2614,7 @@ class Treeview_Table(ttk.Treeview):
     def __init__(self, master, columns):
         ttk.Treeview.__init__(self, master, columns=columns, show='headings',
                               height=600, style="Custom.Treeview")
-        self.width=int(table_width/(len(columns)))
+        self.width = int(table_width / (len(columns)))
         self.columns = columns
         for i in range(len(columns)):
             self.column(self.columns[i], anchor='center', width=self.width)
@@ -2909,8 +2956,8 @@ barr_count_fr = Barrel_Count_Frame(barr_cfr)
 barr_cfr.pack(padx=10)
 
 empt_barr_tbl = Treeview_Table(empt_barr_fr, ('Barrel No', 'Type', 'Gallons',
-                                              'Proof Gallons', 'PG Remaining',
-                                              'Date Filled', 'Date Emptied',
+                                              'PG', 'PG Leftover',
+                                              'Filled', 'Emptied',
                                               'Age', 'Investor'))
 
 empt_barr_cfr = Command_Frame(empt_barr_fr)
@@ -3009,6 +3056,9 @@ emptr_cfr.pack(padx=10)
 reports_nb = ttk.Notebook(window, height=height, width=width)
 reports_fr = Reports_Frame(reports_nb)
 reports_nb.add(reports_fr, text="Monthly Report", padding=10)
+reports_fr.bind("<Visibility>",
+                lambda event:
+                reports_fr.year_cmbo_box.event_generate("<<ComboboxSelected>>"))
 
 menubar = Menu(window)
 menu1 = Menu(menubar, tearoff=0)
