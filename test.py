@@ -29,7 +29,6 @@ for (prod, amt) in [x[:2] for x in pending_info]:
 print(pending_info, prod_prices)
 print(pend_sale_total)
 print(pend_sale_amts)
-sum = 0
+pend_cogs_total = 0
 for prod in pend_sale_amts.keys():
-    sum += float(pend_sale_amts[prod] * prod_prices[prod])
-print(sum)
+    pend_cogs_total += float(pend_sale_amts[prod] * prod_prices[prod])

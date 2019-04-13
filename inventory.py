@@ -19,6 +19,10 @@ import string
 from docx import Document
 from docx.shared import Pt
 import collections
+import pandas
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
 def database():
@@ -154,14 +158,16 @@ def db_update():
 
 def monthly_reports_update():
     #Update 'monthly_reports' table with current month and inventory
-    #values. Only select purchase orders from current month.
+    #values. Only select purchase orders from current month. Selects
+    #pending purchase orders to be fulfilled next month.
     inv_tables = ['raw_materials', 'bottles', 'samples', 'pending_po', 'grain',
                   'purchase_orders']
     monthly_totals = collections.OrderedDict()
     cur_date = datetime.today().strftime('%Y-%m')
     conn = sqlite3.Connection("inventory.db")
-    conn.row_factory = lambda cursor, row: row[0]
     cur = conn.cursor()
+    cur.execute("SELECT product, price FROM bottles")
+    prod_prices = {key:val for (key, val) in cur.fetchall()}
     for table in inv_tables:
         if table == 'pending_po':
             cur.execute("SELECT product, amount, total " +
@@ -169,20 +175,50 @@ def monthly_reports_update():
                         " WHERE po_date " +
                           "LIKE \'" + cur_date + "%\'")
             pending_info = cur.fetchall()
+            pend_sale_amts = {} #Total sale amounts by product
+            for (prod, amt) in [x[:2] for x in pending_info]:
+                if prod in pend_sale_amts:
+                    pend_sale_amts[prod] += int(amt)
+                else:
+                    pend_sale_amts[prod] = int(amt)
+            pend_cogs_total = 0
+            for prod in pend_sale_amts.keys():
+                pend_cogs_total += float(pend_sale_amts[prod]
+                                         * prod_prices[prod])
+            pend_sale_total = sum([float(x[2][1:].replace(",", "")) for x
+                                   in pending_info])
+            monthly_totals['pending_sales'] = pend_sale_total
+            monthly_totals['pending_cogs'] = -1*pend_cogs_total
         elif table == 'purchase_orders':
             cur.execute("SELECT product, amount, total " +
                           "FROM " + table +
                         " WHERE pu_date " +
                           "LIKE \'" + cur_date + "%\'")
+            po_info = cur.fetchall()
+            po_sale_amts = {}   #Total sales amount by product
+            for (prod, amt) in [x[:2] for x in po_info]:
+                if prod in po_sale_amts.keys():
+                    po_sale_amts[prod] += int(amt)
+                else:
+                    po_sale_amts[prod] = int(amt)
+            try:
+                po_cogs_total = 0
+                for prod in po_sale_amts.keys():
+                    po_cogs_total += float(po_sale_amts[prod]
+                                           * prod_prices[prod])
+            except:
+                po_cogs_total = 0
+            po_sale_total = sum([float(x[2][1:].replace(",", "")) for x
+                                 in po_info])
+            monthly_totals['purchase_order_sales'] = po_sale_total
+            monthly_totals['purchase_order_cogs'] = -1*po_cogs_total
         else:
             cur.execute("SELECT total " +
                           "FROM " + table)
+            total_vals = [x[0] for x in cur.fetchall()]
             total = sum([float(x[1:].replace(",", "")) for x
-                         in cur.fetchall()])
+                         in total_vals])
             monthly_totals[table] = total
-    conn.close()
-    conn = sqlite3.Connection("inventory.db")
-    cur = conn.cursor()
     cur.execute("SELECT * " +
                   "FROM barrels")
     barrel_vals = cur.fetchall()
@@ -778,7 +814,8 @@ class Edit_View(Add_View):
         self.selection = self.gui_table.selection()
         self.item_values = self.gui_table.item(self.selection)['values']
         self.tplvl_title = self.sqlite_table.replace("_"," ").title()
-        Add_View.__init__(self,master,sqlite_table,gui_table,entry_col,view_fr)
+        Add_View.__init__(self, master, sqlite_table, gui_table, entry_col,
+                          view_fr)
         self.title("Edit " + self.tplvl_title)
         self.title_frame.destroy()  #Remove add_view title frame.
 
@@ -1806,12 +1843,22 @@ class Reports_Frame(Frame):
         self.month_cmbo_box.pack(padx=5, pady=5)
         self.month_fr.grid(row=0, column=1, padx=5, pady=5)
 
-        self.invent_fr = LabelFrame(self, text="Inventory Values",
+        self.invent_fr = LabelFrame(self, text="Inventory",
                                    font="Arial 12 bold", fg="dark slate gray")
-        self.barrel_fr = LabelFrame(self, text="Barrel Values",
+        self.barrel_fr = LabelFrame(self, text="Barrels",
                                     font="Arial 12 bold", fg="dark slate gray")
         self.po_fr = LabelFrame(self, text="Purchase Orders",
                                 font="Arial 12 bold", fg="dark slate gray")
+
+        self.logo_fr = LabelFrame(self, font="Arial 10 bold",
+                                  fg="dark slate gray")
+        self.logo_path = "ADCO_Logo.jpg"
+        self.img = Image.open(self.logo_path)
+        self.img = self.img.resize((640,520))
+        self.img = ImageTk.PhotoImage(self.img)
+        Label(self.logo_fr, image=self.img).grid(row=0, column=0)
+        self.logo_fr.grid(row=0, column=2, rowspan=5, sticky='nesw', pady=3,
+                          padx=10)
 
         self.year_cmbo_box.event_generate("<<ComboboxSelected>>")
 
@@ -1829,6 +1876,10 @@ class Reports_Frame(Frame):
         self.month_sel = self.month_choices.index(self.month_sel)
         self.month_sel = "{:02}".format(self.month_sel)
         self.date_sel = ("%s-%s") % (self.year_sel, self.month_sel)
+        for widg in [*self.invent_fr.grid_slaves(), # * unpacks contents
+                     *self.barrel_fr.grid_slaves(), # of iterables
+                     *self.po_fr.grid_slaves()]:
+            widg.grid_forget()
         #Inventory Values
         self.conn = sqlite3.Connection("inventory.db")
         self.conn.row_factory = lambda cursor, row: row[1:3]
@@ -1837,84 +1888,39 @@ class Reports_Frame(Frame):
                            "FROM monthly_reports " +
                           "WHERE date=?",
                           (self.date_sel,))
-        self.monthly_totals = self.cur.fetchall()
-        self.total_vals = [x for x
-                           in self.monthly_totals
-                           if x[0] in ['raw_materials', 'bottles', 'samples',
-                                       'pending_po', 'grain']]
-        self.barrel_vals = [x for x
-                            in self.monthly_totals
-                            if x[0] in ['barreled_rum',
-                                        'barreled_whiskey',
-                                        'barrels']]
-        self.po_vals = [x for x
-                        in self.monthly_totals
-                        if x[0] in ['purchase_orders']]
-        self.conn.close()
-        for widg in [*self.invent_fr.grid_slaves(), # * unpacks contents
-                     *self.barrel_fr.grid_slaves(), # of iterables
-                     *self.po_fr.grid_slaves()]:
-            widg.grid_forget()
+        self.monthly_totals = [list(x) for x in self.cur.fetchall()]
         if self.monthly_totals:
-            self.invent_sum = 0
-            self.grid_ind = 0
-            for index, tup in enumerate(self.total_vals):
-                self.invent_sum += float(tup[1])
-                self.grid_ind += 1
-                #ex. Purchase Orders:
-                self.txt1 = str(tup[0].replace("_"," ").title() + ":")
-                self.txt2 = "${0:,.2f}".format(tup[1])
-                (Label(self.invent_fr, text=self.txt1, font="Arial 10 bold")
-                       .grid(row=index, column=0, padx=20, sticky="W"))
-                (Label(self.invent_fr, text=self.txt2, font="Arial 10 bold",
-                       borderwidth=1, relief="solid", width=9)
-                       .grid(row=index, column=1, ipadx=20, sticky="E"))
-            (Label(self.invent_fr, text="Total:", font="Arial 12 bold")
-                   .grid(row=self.grid_ind, column=0, padx=20, sticky="W"))
-            (Label(self.invent_fr, text="${0:,.2f}".format(self.invent_sum),
-                   font="Arial 12 bold", borderwidth=2, relief="solid",
-                   width=10)
-                   .grid(row=self.grid_ind, column=1, ipadx=20, sticky="E"))
-            # Force widget to fill column
-            self.invent_fr.columnconfigure(0, weight=1)
-            self.invent_fr.columnconfigure(1, weight=1)
-            #Barrel Values
-            self.barrel_sum = 0
-            for index, tup in enumerate(self.barrel_vals):
-                self.barrel_sum += float(tup[1])
-                self.txt1 = str(tup[0].replace("_"," ").title() + ":")
-                self.txt2 = "${0:,.2f}".format(tup[1])
-                (Label(self.barrel_fr, text=self.txt1, font="Arial 10 bold")
-                       .grid(row=index, column=0, padx=20, sticky="W"))
-                (Label(self.barrel_fr, text=self.txt2,
-                       font="Arial 10 bold", borderwidth=1, relief="solid", width=9)
-                       .grid(row=index, column=1, ipadx=20, sticky="E"))
-            (Label(self.barrel_fr, text="Total:", font="Arial 12 bold")
-                   .grid(row=3, column=0, padx=20, sticky="W"))
-            (Label(self.barrel_fr, text="${0:,.2f}".format(self.barrel_sum),
-                   font="Arial 12 bold", borderwidth=2, relief="solid", width=10)
-                   .grid(row=3, column=1, ipadx=20, sticky="E"))
-            self.barrel_fr.columnconfigure(0, weight=1)
-            self.barrel_fr.columnconfigure(1, weight=1)
-            #Purchase Order Values
-            self.po_sum = 0
-            for (index, tup) in enumerate(self.po_vals):
-                self.po_sum += float(tup[1])
-                self.txt1 = str(tup[0].replace("_"," ").title() + ":")
-                self.txt2 = "${0:,.2f}".format(tup[1])
-                (Label(self.po_fr, text=self.txt1, font="Arial 10 bold")
-                       .grid(row=index, column=0, padx=20, sticky="W"))
-                (Label(self.po_fr, text=self.txt2, font="Arial 10 bold",
-                       borderwidth=1, relief="solid", width=9)
-                       .grid(row=index, column=1, ipadx=20, sticky="E"))
-            (Label(self.po_fr, text="Total:", font="Arial 12 bold")
-                   .grid(row=3, column=0, padx=20, sticky="W"))
-            (Label(self.po_fr, text="${0:,.2f}".format(self.po_sum),
-                   font="Arial 12 bold", borderwidth=2, relief="solid",
-                   width=10)
-                   .grid(row=3, column=1, ipadx=20, sticky="E"))
-            self.po_fr.columnconfigure(0, weight=1)
-            self.po_fr.columnconfigure(1, weight=1)
+            self.invent_vals_positions = {'raw_materials':0,
+                                          'pending_cogs':1,
+                                          'bottles':2,
+                                          'samples':3,
+                                          'pending_po':4,
+                                          'grain':5}
+            self.invent_vals = [x for x
+                               in self.monthly_totals
+                               if x[0] in self.invent_vals_positions.keys()]
+            self.invent_vals.sort(key=lambda x:
+                                  self.invent_vals_positions[x[0]])
+            self.barrel_vals_positions = {'barreled_rum':0,
+                                          'barreled_whiskey':1,
+                                          'barrels':2}
+            self.barrel_vals = [x for x
+                                in self.monthly_totals
+                                if x[0] in self.barrel_vals_positions.keys()]
+            self.barrel_vals.sort(key=lambda x:
+                                  self.barrel_vals_positions[x[0]])
+            self.po_vals_positions = {'purchase_order_sales':0,
+                                      'purchase_order_cogs':1,
+                                      'pending_sales':2,
+                                      'pending_cogs':3}
+            self.po_vals = [x for x
+                            in self.monthly_totals
+                            if x[0] in self.po_vals_positions.keys()]
+            self.po_vals.sort(key=lambda x: self.po_vals_positions[x[0]])
+            self.conn.close()
+            self.monthly_frames_fill(self.invent_vals, self.invent_fr)
+            self.monthly_frames_fill(self.barrel_vals, self.barrel_fr)
+            self.monthly_frames_fill(self.po_vals, self.po_fr)
         else:
             (Label(self.invent_fr, text="N/A", font="Arial 30 bold",
                    fg="gray")
@@ -1932,6 +1938,34 @@ class Reports_Frame(Frame):
                             sticky="NESW")
         self.po_fr.grid(row=3, column=0, columnspan=2, padx=5, pady=5,
                             sticky="NESW")
+
+    def monthly_frames_fill(self, inv_vals, inv_fr):
+        self.invent_sum = 0
+        self.grid_ind = 0
+        self.neg_vals = ['purchase_order_cogs', 'pending_cogs']
+        for index, lst in enumerate(inv_vals):
+            self.invent_sum += float(lst[1])
+            self.grid_ind += 1
+            #ex. Purchase Orders:
+            self.txt1 = str(lst[0].replace("_"," ").upper() + ":")
+            self.txt2 = "${0:,.2f}".format(lst[1]).replace("-","")
+            (Label(inv_fr, text=self.txt1, font="Arial 10 bold")
+                   .grid(row=index, column=0, padx=20, sticky="W"))
+            self.total_label = Label(inv_fr, text=self.txt2,
+                                     font="Arial 10 bold", borderwidth=1,
+                                     relief="solid", width=9)
+            if lst[1] < 0:
+                self.total_label.config(bg='pink', fg='red')
+            self.total_label.grid(row=index, column=1, ipadx=20, sticky="E")
+        (Label(inv_fr, text="TOTAL:", font="Arial 12 bold")
+               .grid(row=self.grid_ind, column=0, padx=20, sticky="W"))
+        (Label(inv_fr, text="${0:,.2f}".format(self.invent_sum),
+               font="Arial 12 bold", borderwidth=2, relief="solid",
+               width=10)
+               .grid(row=self.grid_ind, column=1, ipadx=20, sticky="E"))
+        # Force widget to fill column
+        inv_fr.columnconfigure(0, weight=1)
+        inv_fr.columnconfigure(1, weight=1)
 
 
 class Sheet_Label(Label):
@@ -2701,6 +2735,7 @@ x = (screen_width/2) - (width/2)
 y = ((screen_height/2) - (height/2)) - 50
 window.geometry("%dx%d+%d+%d" % (width, height ,x ,y))
 window.resizable(1,1)
+window.focus()
 
 #calendar button image
 cal_image = Image.open("calendar.png")
