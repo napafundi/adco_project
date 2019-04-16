@@ -254,13 +254,20 @@ def monthly_reports_update():
 def create_excel_inv():
     #Populate inventory_template.xlsx with inventory values and save as
     #new workbook.
-    #['inv table', 'total column index']
+    #('inv table', 'total column index')
     inventories = (('raw_materials', 4),
+                   ('production', None),
+                   ('in_progress', None),
                    ('bottles', 5),
                    ('samples', 5),
                    ('grain', 5),
+                   ('mashes', None),
+                   ('grain_log', None),
                    ('barrels', None),
-                   ('purchase_orders', 6))
+                   ('empty_barrels', None),
+                   ('purchase_orders', 6),
+                   ('pending_po', 6),
+                   ('employee_transactions', None))
     inventories = collections.OrderedDict(inventories)
     excel_file = (os.getcwd() + "/inventory_files/inventory_template.xlsx")
     wb = openpyxl.load_workbook(excel_file)
@@ -273,19 +280,28 @@ def create_excel_inv():
                       "FROM " + inv)
         inv_values = cur.fetchall()
         if len(inv_values) > 0:
-            for (indx, row) in enumerate(inv_values, 1):
+            for (indx, row) in enumerate(inv_values, 2):
                 try:
                     row = list(row)
                     # Strip $, remove commas
                     row[tot_col] = float(row[tot_col][1:].replace(",",""))
                     tot_col += 1    # Change index for excel column
+                    active_sheet.append(row)
                     active_sheet.cell(indx, tot_col).number_format = '$#,##0.00'
                 except TypeError:
                     pass
-                active_sheet.append(row)
             last_row = len(inv_values) + 1
             last_col = len(inv_values[0]) - 1
+            # Format text to justify centrally
+            rows = range(1, last_row + 1)
+            columns = string.ascii_uppercase[:last_col + 1]
             last_col = string.ascii_uppercase[last_col]
+            for row in rows:
+                for col in columns:
+                    cell = col + str(row)
+                    active_sheet[cell].alignment = (
+                        openpyxl.styles.Alignment(horizontal='center'))
+            # Format excel table
             tbl_ref = "A1:" + str(last_col) + str(last_row)
             tbl = openpyxl.worksheet.table.Table(displayName=inv, ref=tbl_ref)
             style = openpyxl.worksheet.table.TableStyleInfo(
@@ -293,7 +309,9 @@ def create_excel_inv():
                 showLastColumn=False, showRowStripes=True)
             tbl.tableStyleInfo = style
             active_sheet.add_table(tbl)
-    new_excel_file = os.getcwd() + "/inventory_files/inventory_1.xlsx"
+    conn.close()
+    new_excel_file = (os.getcwd() + "/inventory_files/"
+                      + datetime.now().strftime("%Y-%m") + ".xlsx")
     wb.save(new_excel_file)
     os.system('start EXCEL.EXE ' + new_excel_file)
 
@@ -1301,7 +1319,8 @@ class Purchase_Order_View(Toplevel):
             + "be completed or removed at a later date. \n \n"
             + "***IMPORTANT***  The PO-Number is calculated from completed "
             + "purchase orders. If there are any pending purchase orders, "
-            + "please fulfill or cancel them before continuing.", parent=self)
+            + "please fulfill or cancel them before continuing. You may also "
+            + "update the purchase order number yourself.", parent=self)
 
         if self.open_ques == 'no':
             return self.total_after()
@@ -1857,7 +1876,7 @@ class Reports_Frame(Frame):
         self.img = self.img.resize((640,520))
         self.img = ImageTk.PhotoImage(self.img)
         Label(self.logo_fr, image=self.img).grid(row=0, column=0)
-        self.logo_fr.grid(row=0, column=2, rowspan=5, sticky='nesw', pady=3,
+        self.logo_fr.grid(row=0, column=2, rowspan=5, sticky="nesw", pady=3,
                           padx=10)
 
         self.year_cmbo_box.event_generate("<<ComboboxSelected>>")
@@ -1922,7 +1941,7 @@ class Reports_Frame(Frame):
             self.monthly_frames_fill(self.barrel_vals, self.barrel_fr)
             self.monthly_frames_fill(self.po_vals, self.po_fr)
         else:
-            (Label(self.invent_fr, text="N/A", font="Arial 30 bold",
+            (Label(self.invent_fr, text="N/A", font="Arial 30 bold", width=15,
                    fg="gray")
                    .grid(row=0, column=0, columnspan=2))
             (Label(self.barrel_fr, text="N/A", font="Arial 30 bold",
@@ -1933,11 +1952,11 @@ class Reports_Frame(Frame):
                    .grid(row=0, column=0, columnspan=2))
 
         self.invent_fr.grid(row=1, column=0, columnspan=2, padx=5, pady=5,
-                           sticky="NESW")
+                            sticky="NESW")
         self.barrel_fr.grid(row=2, column=0, columnspan=2, padx=5, pady=5,
                             sticky="NESW")
         self.po_fr.grid(row=3, column=0, columnspan=2, padx=5, pady=5,
-                            sticky="NESW")
+                        sticky="NESW")
 
     def monthly_frames_fill(self, inv_vals, inv_fr):
         self.invent_sum = 0
@@ -1958,7 +1977,7 @@ class Reports_Frame(Frame):
                 self.total_label.config(bg='pink', fg='red')
             self.total_label.grid(row=index, column=1, ipadx=20, sticky="E")
         (Label(inv_fr, text="TOTAL:", font="Arial 12 bold")
-               .grid(row=self.grid_ind, column=0, padx=20, sticky="W"))
+               .grid(row=self.grid_ind, column=0, ipadx=20, sticky="W"))
         (Label(inv_fr, text="${0:,.2f}".format(self.invent_sum),
                font="Arial 12 bold", borderwidth=2, relief="solid",
                width=10)
@@ -3132,6 +3151,7 @@ menu4 = Menu(menubar, tearoff=0)
 menu4.add_command(label="Monthly Reports",
                   command=lambda: view_widget(window, reports_nb, BOTTOM, None,
                                               'All', 'All', None))
+menu4.add_command(label="Export for Excel", command=create_excel_inv)
 menubar.add_cascade(label="Analysis", menu=menu4)
 
 window.config(menu=menubar)
